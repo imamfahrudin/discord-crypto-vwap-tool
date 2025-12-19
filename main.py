@@ -68,12 +68,19 @@ async def get_scanner_data_raw():
     
     if hours_elapsed < 2:
         # Include previous session data for more candles
-        if session_name == "LONDON":
-            prev_session_start = int(now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp() * 1000)  # Asian
-        elif session_name == "NEW_YORK":
-            prev_session_start = int(now.replace(hour=8, minute=0, second=0, microsecond=0).timestamp() * 1000)  # London
-        else:  # Asian
-            prev_session_start = int((now - timedelta(days=1)).replace(hour=16, minute=0, second=0, microsecond=0).timestamp() * 1000)  # Previous NY
+        # Approximate previous session start times based on new sessions
+        if session_name == "Tokyo":
+            # Tokyo -> previous Sydney (23:00 UTC previous day)
+            prev_session_start = int((now - timedelta(days=1)).replace(hour=23, minute=0, second=0, microsecond=0).timestamp() * 1000)
+        elif session_name == "London":
+            # London -> previous Tokyo (00:00 UTC)
+            prev_session_start = int(now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp() * 1000)
+        elif session_name == "New York":
+            # New York -> previous London (07:00 UTC)
+            prev_session_start = int(now.replace(hour=7, minute=0, second=0, microsecond=0).timestamp() * 1000)
+        else:  # Sydney
+            # Sydney -> previous New York (13:00 UTC previous day)
+            prev_session_start = int((now - timedelta(days=1)).replace(hour=13, minute=0, second=0, microsecond=0).timestamp() * 1000)
         
         start_ts = prev_session_start
         print(f"📊 Session: {session_name}, Weight: {weight}, Using current + previous session data (hours elapsed: {hours_elapsed:.1f})")
