@@ -8,6 +8,7 @@ import sqlite3
 import os
 from config import DISCORD_BOT_TOKEN, REFRESH_INTERVAL
 from typing import Optional
+from table_generator import generate_table_image
 
 # Database setup
 DB_PATH = '/app/data/bot_states.db' if os.path.exists('/app') else 'bot_states.db'
@@ -207,12 +208,6 @@ class VWAPBot(commands.Bot):
                         utc_time = datetime.utcnow()
                         last_updated = f"{wib_time.strftime('%H:%M:%S')} WIB | {utc_time.strftime('%H:%M:%S')} UTC"
 
-                    # Create rich embed instead of plain text table
-                    embed = discord.Embed(
-                        title="📊 BYBIT FUTURES VWAP SCANNER",
-                        color=discord.Color.blue()
-                    )
-
                     # Parse session info from table_data
                     session_name = "UNKNOWN"
                     weight = "0.0"
@@ -228,76 +223,30 @@ class VWAPBot(commands.Bot):
                                     weight = weight_part
                                 break
 
-                    # Add session info as author
-                    embed.set_author(
-                        name=f"Session: {session_name} | Weight: {weight}"
+                    # Generate table image
+                    print(f"🎨 Generating table image for channel {channel_id}...")
+                    table_image = generate_table_image(table_data, session_name, weight, last_updated)
+
+                    # Create embed with image
+                    embed = discord.Embed(
+                        title="📊 BYBIT FUTURES VWAP SCANNER",
+                        description=f"**Session:** {session_name} | **Weight:** {weight}\n📅 {last_updated}",
+                        color=discord.Color.blue()
                     )
 
-                    # Parse the table data to extract individual rows
-                    if isinstance(table_data, str) and "RANK" in table_data:
-                        lines = table_data.split('\n')
-                        data_lines = [line for line in lines if line.strip() and not line.startswith('=') and not line.startswith('-') and 'RANK' not in line and 'BYBIT' not in line and 'Session' not in line]
+                    # Create file attachment
+                    filename = f"vwap_scanner_{datetime.utcnow().strftime('%H%M%S')}.png"
+                    file = discord.File(table_image, filename=filename)
 
-                        # Add top 10 symbols as fields (Discord embed limit is 25 fields, but keep it clean)
-                        for i, line in enumerate(data_lines[:10]):
-                            if line.strip():
-                                parts = line.split()
-                                if len(parts) >= 10:
-                                    rank = parts[0]
-                                    symbol = parts[1]
-                                    signal_parts = []
-                                    score_idx = -1
+                    # Set image in embed
+                    embed.set_image(url=f"attachment://{filename}")
 
-                                    # Find signal (contains emojis and text)
-                                    for j, part in enumerate(parts[2:], 2):
-                                        if part.replace('.', '').replace('-', '').isdigit():
-                                            score_idx = j
-                                            break
-                                        signal_parts.append(part)
-
-                                    # Clean signal text by removing emojis and extra spaces
-                                    signal = ' '.join(signal_parts).strip()
-                                    # Remove common emoji patterns
-                                    import re
-                                    signal = re.sub(r'[🔴🟢⚪🔥]\s*', '', signal).strip()
-                                    score = parts[score_idx] if score_idx > 0 else "N/A"
-                                    price = parts[score_idx + 1] if score_idx + 1 < len(parts) else "N/A"
-                                    vwap = parts[score_idx + 2] if score_idx + 2 < len(parts) else "N/A"
-                                    volume = parts[score_idx + 3] if score_idx + 3 < len(parts) else "N/A"
-                                    rsi = parts[score_idx + 4] if score_idx + 4 < len(parts) else "N/A"
-                                    macd = parts[score_idx + 5] if score_idx + 5 < len(parts) else "N/A"
-                                    stoch = parts[score_idx + 6] if score_idx + 6 < len(parts) else "N/A"
-
-                                    # Determine color based on signal
-                                    if "STRONG BUY" in signal:
-                                        field_color = "🟢🔥"
-                                    elif "BUY" in signal:
-                                        field_color = "🟢"
-                                    elif "STRONG SELL" in signal:
-                                        field_color = "🔴🔥"
-                                    elif "SELL" in signal:
-                                        field_color = "🔴"
-                                    else:
-                                        field_color = "⚪"
-
-                                    # Create field value with formatted data
-                                    field_value = f"**Signal:** {field_color} {signal}\n"
-                                    field_value += f"**Score:** {score} | **Price:** {price}\n"
-                                    field_value += f"**VWAP:** {vwap} | **Vol:** {volume}M\n"
-                                    field_value += f"**RSI:** {rsi} | **MACD:** {macd} | **Stoch:** {stoch}"
-
-                                    embed.add_field(
-                                        name=f"#{rank} {symbol}",
-                                        value=field_value,
-                                        inline=False
-                                    )
-
-                    # Add timestamp and refresh info
-                    embed.set_footer(text=f"🔄 Updates every {REFRESH_INTERVAL}s | 📅 {last_updated} | Use !stop to end scanning")
+                    # Add footer
+                    embed.set_footer(text=f"🔄 Updates every {REFRESH_INTERVAL}s | Use !stop to end scanning")
 
                     message = self.channel_states[channel_id]['message']
-                    await message.edit(embed=embed)
-                    print(f"✅ Message updated in channel {channel_id}")
+                    await message.edit(embed=embed, attachments=[file])
+                    print(f"✅ Table image updated in channel {channel_id}")
                 elif channel_id in self.channel_states:
                     print(f"⚠️ No data to update in channel {channel_id}")
 
