@@ -229,8 +229,8 @@ class VWAPBot(commands.Bot):
 
                     # Create embed with image
                     embed = discord.Embed(
-                        title="📊 BYBIT FUTURES VWAP SCANNER",
-                        description=f"**Session:** {session_name} | **Weight:** {weight}\n📅 {last_updated}",
+                        title="BYBIT FUTURES VWAP SCANNER",
+                        description=f"Session: {session_name} | Weight: {weight} | Last Updated: {last_updated}",
                         color=discord.Color.blue()
                     )
 
@@ -241,8 +241,12 @@ class VWAPBot(commands.Bot):
                     # Set image in embed
                     embed.set_image(url=f"attachment://{filename}")
 
+                    # Calculate next update time
+                    next_update = datetime.now() + timedelta(seconds=REFRESH_INTERVAL)
+                    next_update_str = next_update.strftime('%H:%M:%S WIB')
+
                     # Add footer
-                    embed.set_footer(text=f"🔄 Updates every {REFRESH_INTERVAL}s | Use !stop to end scanning")
+                    embed.set_footer(text=f"Next update on {next_update_str}")
 
                     message = self.channel_states[channel_id]['message']
                     await message.edit(embed=embed, attachments=[file])
