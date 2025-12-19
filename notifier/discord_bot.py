@@ -202,8 +202,9 @@ class VWAPBot(commands.Bot):
                         table_data, last_updated = table_text
                     else:
                         table_data = table_text
+                        # Container is set to WIB timezone, so datetime.now() gives WIB time
+                        wib_time = datetime.now()
                         utc_time = datetime.utcnow()
-                        wib_time = utc_time + timedelta(hours=7)
                         last_updated = f"{wib_time.strftime('%H:%M:%S')} WIB | {utc_time.strftime('%H:%M:%S')} UTC"
                     
                     embed = discord.Embed(
