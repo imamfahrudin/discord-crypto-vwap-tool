@@ -6,7 +6,7 @@ import asyncio
 from datetime import datetime, timedelta
 import sqlite3
 import os
-from config import DISCORD_BOT_TOKEN, REFRESH_INTERVAL
+from config import DISCORD_BOT_TOKEN, REFRESH_INTERVAL, TABLE_FOOTER_TEXT
 from typing import Optional
 from table_generator import generate_table_image
 
@@ -225,7 +225,7 @@ class VWAPBot(commands.Bot):
 
                     # Generate table image
                     print(f"🎨 Generating table image for channel {channel_id}...")
-                    table_image = generate_table_image(table_data, session_name, weight, last_updated)
+                    table_image = generate_table_image(table_data, session_name, weight, last_updated, TABLE_FOOTER_TEXT)
 
                     # Create embed with image
                     embed = discord.Embed(

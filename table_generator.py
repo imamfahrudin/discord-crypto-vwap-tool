@@ -7,7 +7,7 @@ from datetime import datetime
 import warnings
 import re
 
-def generate_table_image(table_data: str, session_name: str = "UNKNOWN", weight: str = "0.0", last_updated: str = None) -> BytesIO:
+def generate_table_image(table_data: str, session_name: str = "UNKNOWN", weight: str = "0.0", last_updated: str = None, footer_text: str = None) -> BytesIO:
     """
     Generate a table image from VWAP scanner data.
 
@@ -16,6 +16,7 @@ def generate_table_image(table_data: str, session_name: str = "UNKNOWN", weight:
         session_name: Current trading session name
         weight: Session weight value
         last_updated: Timestamp string
+        footer_text: Optional footer text to display at bottom
 
     Returns:
         BytesIO object containing the table image
@@ -101,11 +102,11 @@ def generate_table_image(table_data: str, session_name: str = "UNKNOWN", weight:
             fontsize=11, color='#64748b',
             ha='center', va='top')
 
-    # Add refresh info
-    refresh_text = "Auto-updates every 30 seconds | Use !stop to end scanning"
-    ax.text(0.5, 0.05, refresh_text, transform=ax.transAxes,
-            fontsize=9, color='#94a3b8',
-            ha='center', va='bottom')
+    # Add configurable footer text if provided
+    if footer_text:
+        ax.text(0.5, 0.05, footer_text, transform=ax.transAxes,
+                fontsize=9, color='#94a3b8',
+                ha='center', va='bottom')
 
     # Adjust layout
     plt.tight_layout()
