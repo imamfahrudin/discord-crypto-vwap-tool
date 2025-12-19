@@ -6,7 +6,7 @@ import asyncio
 from datetime import datetime, timedelta
 import sqlite3
 import os
-from config import DISCORD_BOT_TOKEN, REFRESH_INTERVAL, TABLE_FOOTER_TEXT
+from config import DISCORD_BOT_TOKEN, REFRESH_INTERVAL, TABLE_FOOTER_TEXT, EMBED_FOOTER_TEXT
 from typing import Optional
 from table_generator import generate_table_image
 from utils.interval_parser import parse_intervals, format_interval
@@ -349,14 +349,18 @@ class VWAPBot(commands.Bot):
                     # Import interval formatter
                     interval_str = format_interval(interval)
 
+                    # Calculate next update time
+                    next_update = datetime.now() + timedelta(seconds=interval)
+                    next_update_str = next_update.strftime('%H:%M:%S WIB')
+
                     # Generate table image
                     print(f"🎨 Generating table image for channel {channel_id} interval {interval}s...")
-                    table_image = generate_table_image(table_data, session_name, weight, last_updated, TABLE_FOOTER_TEXT, interval_str)
+                    table_image = generate_table_image(table_data, session_name, weight, last_updated, TABLE_FOOTER_TEXT, interval_str, next_update_str)
 
                     # Create embed with image
                     embed = discord.Embed(
-                        title=f"BYBIT FUTURES VWAP SCANNER [{interval_str}]",
-                        description=f"Session: {session_name} | Weight: {weight} | Last Updated: {last_updated}",
+                        title=f"BYBIT FUTURES VWAP SCANNER - UPDATED EVERY {interval_str.upper()}",
+                        description=f"Current Session: {session_name} | Weight: {weight} | Last Updated: {last_updated} | Next Update: {next_update_str}",
                         color=discord.Color.blue()
                     )
 
@@ -367,12 +371,9 @@ class VWAPBot(commands.Bot):
                     # Set image in embed
                     embed.set_image(url=f"attachment://{filename}")
 
-                    # Calculate next update time
-                    next_update = datetime.now() + timedelta(seconds=interval)
-                    next_update_str = next_update.strftime('%H:%M:%S WIB')
-
-                    # Add footer
-                    embed.set_footer(text=f"Next update on {next_update_str}")
+                    # Add footer if configured
+                    if EMBED_FOOTER_TEXT:
+                        embed.set_footer(text=EMBED_FOOTER_TEXT)
 
                     message = self.channel_states[channel_id][interval]['message']
                     await message.edit(embed=embed, attachments=[file])

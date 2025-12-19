@@ -26,3 +26,6 @@ SESSION_WEIGHTS = {
 
 # Table image footer text (optional - leave empty for no footer)
 TABLE_FOOTER_TEXT = ""  # Example: "© 2025 Your Company Name"
+
+# Embed footer text (optional - leave empty for no footer)
+EMBED_FOOTER_TEXT = ""  # Example: "© 2025 Your Company Name • Powered by AI"

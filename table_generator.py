@@ -112,7 +112,7 @@ def calculate_rank_changes(current_rankings: list, previous_rankings: list, sess
 
     return rank_changes
 
-def generate_table_image(table_data: str, session_name: str = "UNKNOWN", weight: str = "0.0", last_updated: str = None, footer_text: str = None, interval_str: str = None) -> BytesIO:
+def generate_table_image(table_data: str, session_name: str = "UNKNOWN", weight: str = "0.0", last_updated: str = None, footer_text: str = None, interval_str: str = None, next_update: str = None) -> BytesIO:
     """
     Generate a table image from VWAP scanner data.
 
@@ -123,6 +123,7 @@ def generate_table_image(table_data: str, session_name: str = "UNKNOWN", weight:
         last_updated: Timestamp string
         footer_text: Optional footer text to display at bottom
         interval_str: Optional interval string (e.g., "10m", "30m", "1h") for title
+        next_update: Optional next update time string
 
     Returns:
         BytesIO object containing the table image
@@ -254,7 +255,7 @@ def generate_table_image(table_data: str, session_name: str = "UNKNOWN", weight:
 
     # Add title with optional interval/timeframe
     if interval_str:
-        title_text = f"BYBIT FUTURES VWAP SCANNER - {interval_str.upper()} TIMEFRAME"
+        title_text = f"BYBIT FUTURES VWAP SCANNER - UPDATED EVERY {interval_str.upper()}"
     else:
         title_text = f"BYBIT FUTURES VWAP SCANNER"
     ax.text(0.5, 0.95, title_text, transform=ax.transAxes,
@@ -262,10 +263,12 @@ def generate_table_image(table_data: str, session_name: str = "UNKNOWN", weight:
             ha='center', va='top')
 
     # Add session info and timestamp on same line
-    if last_updated:
-        session_text = f"Session: {session_name} | Weight: {weight} | Last Updated: {last_updated}"
+    if last_updated and next_update:
+        session_text = f"Current Session: {session_name} | Weight: {weight} | Last Updated: {last_updated} | Next Update: {next_update}"
+    elif last_updated:
+        session_text = f"Current Session: {session_name} | Weight: {weight} | Last Updated: {last_updated}"
     else:
-        session_text = f"Session: {session_name} | Weight: {weight}"
+        session_text = f"Current Session: {session_name} | Weight: {weight}"
     ax.text(0.5, 0.92, session_text, transform=ax.transAxes,
             fontsize=11, color='#64748b',
             ha='center', va='top')
