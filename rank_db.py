@@ -113,7 +113,7 @@ def load_previous_rankings(session_name: str, interval: int = 120) -> list:
     """Load the most recent previous rankings for a session and interval from database
     
     Args:
-        session_name: Trading session name (ASIAN, LONDON, NEW_YORK)
+        session_name: Trading session name (Sydney, Tokyo, London, New York)
         interval: Refresh interval in seconds (default: 120)
     
     Returns:

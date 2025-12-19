@@ -400,7 +400,7 @@ class VWAPBot(commands.Bot):
                         lines = table_data.split('\n')
                         for line in lines:
                             if line.startswith('Session :'):
-                                # Extract session and weight from "Session : ASIAN | Weight : 0.7"
+                                # Extract session and weight from "Session : Sydney | Weight : 0.6"
                                 parts = line.replace('Session : ', '').split(' | ')
                                 if len(parts) >= 2:
                                     session_name = parts[0].strip()
