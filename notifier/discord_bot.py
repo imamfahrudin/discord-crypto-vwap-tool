@@ -3,7 +3,7 @@
 import discord
 from discord.ext import commands, tasks
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 import sqlite3
 import os
 from config import DISCORD_BOT_TOKEN, REFRESH_INTERVAL
@@ -140,7 +140,8 @@ class VWAPBot(commands.Bot):
                 task = asyncio.create_task(self.update_loop_for_channel(channel_id))
                 self.channel_states[channel_id]['task'] = task
 
-                print(f"✅ Restored scanner in {state_data.get('channel_name', f'channel {channel_id}')}")
+                print(f"✅ Restored scanner in {state_data.get('channel_name', f'channel {channel_id}')} - resuming updates")
+                print(f"🔄 Update loop resumed for channel {channel_id}")
 
             except Exception as e:
                 print(f"❌ Failed to restore state for channel {channel_id}: {e}")
@@ -165,7 +166,9 @@ class VWAPBot(commands.Bot):
                         table_data, last_updated = table_text
                     else:
                         table_data = table_text
-                        last_updated = datetime.utcnow().strftime('%H:%M:%S UTC')
+                        utc_time = datetime.utcnow()
+                        wib_time = utc_time + timedelta(hours=7)
+                        last_updated = f"{wib_time.strftime('%H:%M:%S')} WIB | {utc_time.strftime('%H:%M:%S')} UTC"
                     
                     embed = discord.Embed(
                         title="📊 VWAP Scanner",
