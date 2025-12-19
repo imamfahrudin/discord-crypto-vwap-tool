@@ -38,7 +38,7 @@ def generate_table_image(table_data: str, session_name: str = "UNKNOWN", weight:
     ax.axis('off')
 
     # Create table
-    table = Table(ax, bbox=[0.05, 0.1, 0.9, 0.8])
+    table = Table(ax, bbox=[0.05, 0.12, 0.9, 0.78])
 
     # Set table style
     table.auto_set_font_size(False)
@@ -92,18 +92,14 @@ def generate_table_image(table_data: str, session_name: str = "UNKNOWN", weight:
             fontsize=16, fontweight='bold', color='#1e293b',
             ha='center', va='top')
 
-    # Add session info
-    session_text = f"Session: {session_name} | Weight: {weight}"
-    ax.text(0.5, 0.92, session_text, transform=ax.transAxes,
-            fontsize=12, color='#64748b',
-            ha='center', va='top')
-
-    # Add timestamp
+    # Add session info and timestamp on same line
     if last_updated:
-        time_text = f"Last Updated: {last_updated}"
-        ax.text(0.5, 0.89, time_text, transform=ax.transAxes,
-                fontsize=10, color='#94a3b8',
-                ha='center', va='top')
+        session_text = f"Session: {session_name} | Weight: {weight} | Last Updated: {last_updated}"
+    else:
+        session_text = f"Session: {session_name} | Weight: {weight}"
+    ax.text(0.5, 0.92, session_text, transform=ax.transAxes,
+            fontsize=11, color='#64748b',
+            ha='center', va='top')
 
     # Add refresh info
     refresh_text = "Auto-updates every 30 seconds | Use !stop to end scanning"
