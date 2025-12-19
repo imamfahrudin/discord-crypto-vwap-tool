@@ -11,12 +11,24 @@ SESSIONS_LOCAL = {
 }
 
 def detect_session():
-    """Detect current active session based on UTC time and local session definitions"""
+    """Detect current active session based on UTC time and local session definitions
+    
+    Priority order (highest weight first when multiple sessions active):
+    1. New York (weight 1.2) - 13:00-22:00 UTC
+    2. London (weight 1.0) - 07:00-16:00 UTC  
+    3. Tokyo (weight 0.8) - 00:00-09:00 UTC
+    4. Sydney (weight 0.6) - 23:00-08:00 UTC (overnight)
+    """
     now_utc = datetime.now(dt_timezone.utc)
     current_hour_utc = now_utc.hour
 
-    # Convert local session times to UTC for comparison
-    for session_name, (start_local, end_local, tz_name) in SESSIONS_LOCAL.items():
+    # Check sessions in priority order (highest weight first)
+    # This ensures when sessions overlap, we pick the highest weight session
+    session_priority = ["New York", "London", "Tokyo", "Sydney"]
+    
+    for session_name in session_priority:
+        start_local, end_local, tz_name = SESSIONS_LOCAL[session_name]
+        
         # Calculate UTC hours for this session
         utc_start, utc_end = get_utc_hours_for_session(start_local, end_local, tz_name, now_utc)
 
