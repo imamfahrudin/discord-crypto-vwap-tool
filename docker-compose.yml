@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  discord-crypto-vwap-bot:
+    build: .
+    container_name: discord-crypto-vwap-tool
+    volumes:
+      - ./config.py:/app/config.py
+      - ./output:/app/output
+      - ./sessions:/app/sessions
+    restart: unless-stopped
+    dns:
+      - 127.0.0.1
