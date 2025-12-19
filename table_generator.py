@@ -140,11 +140,22 @@ def generate_table_image(table_data: str, session_name: str = "UNKNOWN", weight:
     # Extract current rankings for this session (list of (symbol, rank) tuples)
     current_rankings = [(row[1], int(row[0])) for row in parsed_data]  # (symbol, rank)
 
+    # Parse interval from interval_str (e.g., "10m" -> 600, "1h" -> 3600)
+    interval_seconds = 120  # Default
+    if interval_str:
+        interval_lower = interval_str.lower()
+        if 'm' in interval_lower:
+            interval_seconds = int(interval_lower.replace('m', '')) * 60
+        elif 'h' in interval_lower:
+            interval_seconds = int(float(interval_lower.replace('h', '')) * 3600)
+        elif 's' in interval_lower:
+            interval_seconds = int(interval_lower.replace('s', ''))
+
     # Load previous rankings and calculate changes
     if USE_DATABASE:
-        previous_rankings = load_previous_rankings(session_name)
+        previous_rankings = load_previous_rankings(session_name, interval_seconds)
     else:
-        # Fallback to JSON
+        # Fallback to JSON (keep session-only for backward compatibility)
         previous_rankings_data = load_previous_rankings_fallback()
         previous_rankings = previous_rankings_data.get(session_name, [])
 
@@ -153,7 +164,7 @@ def generate_table_image(table_data: str, session_name: str = "UNKNOWN", weight:
 
     # Save current rankings for next comparison
     if USE_DATABASE:
-        save_previous_rankings(session_name, current_rankings)
+        save_previous_rankings(session_name, current_rankings, interval_seconds)
     else:
         # Fallback to JSON
         previous_rankings_data[session_name] = current_rankings

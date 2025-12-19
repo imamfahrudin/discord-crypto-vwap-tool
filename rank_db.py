@@ -19,54 +19,70 @@ def init_rankings_table():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    # Create previous_rankings table
+    # Create previous_rankings table with interval support
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS previous_rankings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             session_name TEXT NOT NULL,
+            interval INTEGER NOT NULL,
             symbol TEXT NOT NULL,
             rank INTEGER NOT NULL,
             scan_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(session_name, symbol, scan_time)
+            UNIQUE(session_name, interval, symbol)
         )
     ''')
 
     conn.commit()
     conn.close()
 
-def save_previous_rankings(session_name: str, rankings: list):
-    """Save current rankings for a session to database"""
+def save_previous_rankings(session_name: str, rankings: list, interval: int = 120):
+    """Save current rankings for a session and interval to database
+    
+    Args:
+        session_name: Trading session name (ASIAN, LONDON, NEW_YORK)
+        rankings: List of (symbol, rank) tuples
+        interval: Refresh interval in seconds (default: 120)
+    """
     init_rankings_table()  # Ensure table exists
 
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
+
+    # Delete existing rankings for this session and interval
+    cursor.execute('DELETE FROM previous_rankings WHERE session_name = ? AND interval = ?', 
+                   (session_name, interval))
 
     # Insert new rankings with current timestamp
     for symbol, rank in rankings:
         cursor.execute('''
-            INSERT INTO previous_rankings (session_name, symbol, rank, scan_time)
-            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-        ''', (session_name, symbol, rank))
+            INSERT INTO previous_rankings (session_name, interval, symbol, rank, scan_time)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ''', (session_name, interval, symbol, rank))
 
     conn.commit()
     conn.close()
 
-def load_previous_rankings(session_name: str) -> list:
-    """Load the most recent previous rankings for a session from database"""
+def load_previous_rankings(session_name: str, interval: int = 120) -> list:
+    """Load the most recent previous rankings for a session and interval from database
+    
+    Args:
+        session_name: Trading session name (ASIAN, LONDON, NEW_YORK)
+        interval: Refresh interval in seconds (default: 120)
+    
+    Returns:
+        List of (symbol, rank) tuples
+    """
     init_rankings_table()  # Ensure table exists
 
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    # Get the most recent scan for this session
+    # Get rankings for this session and interval
     cursor.execute('''
         SELECT symbol, rank FROM previous_rankings
-        WHERE session_name = ?
-        AND scan_time = (
-            SELECT MAX(scan_time) FROM previous_rankings
-            WHERE session_name = ?
-        )
-    ''', (session_name, session_name))
+        WHERE session_name = ? AND interval = ?
+        ORDER BY rank
+    ''', (session_name, interval))
 
     rows = cursor.fetchall()
     conn.close()
