@@ -1,5 +1,6 @@
 import asyncio
 import aiohttp
+from datetime import datetime
 
 from bybit.rest import get_futures_symbols, get_session_candles
 from bybit.websocket import start_ws, prices
@@ -22,9 +23,32 @@ from config import (
     MIN_VOLUME_M
 )
 
+# Global cache for scanner data
+scanner_cache = {
+    'data': None,
+    'last_updated': 0,
+    'updating': False
+}
 
-async def get_scanner_data():
-    """Callback function for Discord bot to get updated scanner data"""
+async def update_scanner_cache():
+    """Update the scanner cache in background"""
+    if scanner_cache['updating']:
+        return  # Already updating
+    
+    scanner_cache['updating'] = True
+    try:
+        print("🔄 Updating scanner cache...")
+        data = await get_scanner_data_raw()
+        scanner_cache['data'] = data
+        scanner_cache['last_updated'] = asyncio.get_event_loop().time()
+        print("✅ Scanner cache updated")
+    except Exception as e:
+        print(f"❌ Failed to update scanner cache: {e}")
+    finally:
+        scanner_cache['updating'] = False
+
+async def get_scanner_data_raw():
+    """Raw scanner data computation (heavy lifting)"""
     symbols = (await get_futures_symbols())[:MAX_SYMBOLS]
 
     session_name, weight = detect_session()
@@ -102,22 +126,63 @@ async def get_scanner_data():
         # Return table text for Discord
         return render_table(ranked[:15], session_name, weight)
 
+async def get_scanner_data():
+    """Callback function for Discord bot to get updated scanner data"""
+    current_time = asyncio.get_event_loop().time()
+    
+    # Check if cache is fresh (less than 30 seconds old)
+    if scanner_cache['data'] and (current_time - scanner_cache['last_updated']) < 30:
+        print("✅ Using cached scanner data")
+        last_updated = datetime.fromtimestamp(scanner_cache['last_updated']).strftime('%H:%M:%S')
+        return scanner_cache['data'], last_updated
+    
+    # Cache is stale, update it
+    await update_scanner_cache()
+    
+    # Return cached data (might be None if update failed)
+    if scanner_cache['data']:
+        last_updated = datetime.fromtimestamp(scanner_cache['last_updated']).strftime('%H:%M:%S')
+        return scanner_cache['data'], last_updated
+    else:
+        return "⚠️ Scanner data not available. Please try again in a moment.", "N/A"
+
 
 async def main():
-    """Main function - now just sets up the bot"""
-    # Initialize websocket connection
+    """Main function - now sets up the bot first, then websocket"""
+    # Set up bot callback FIRST
+    bot.set_update_callback(get_scanner_data)
+
+    print("🤖 VWAP Scanner Discord Bot v2.0 - CACHED EDITION")
+    print("Use !start in Discord to begin scanning")
+    print("Use !stop to stop scanning")
+
+    # Start background cache updater
+    cache_task = asyncio.create_task(cache_updater())
+    
+    # Start the Discord bot FIRST
+    bot_task = asyncio.create_task(start_bot())
+
+    # Wait a moment for bot to connect
+    await asyncio.sleep(2)
+
+    # THEN initialize websocket connection
     symbols = (await get_futures_symbols())[:MAX_SYMBOLS]
     start_ws(symbols)
 
-    # Set up bot callback
-    bot.set_update_callback(get_scanner_data)
+    print("✅ WebSocket connection started")
 
-    print("🤖 VWAP Scanner Discord Bot")
-    print("Use /start in Discord to begin scanning")
-    print("Use /stop to stop scanning")
+    # Wait for bot task (this will run forever)
+    await bot_task
 
-    # Start the Discord bot (this will run forever)
-    await start_bot()
+async def cache_updater():
+    """Background task to keep scanner cache fresh"""
+    while True:
+        try:
+            await update_scanner_cache()
+            await asyncio.sleep(REFRESH_INTERVAL)  # Update every refresh interval
+        except Exception as e:
+            print(f"❌ Cache updater error: {e}")
+            await asyncio.sleep(10)  # Retry in 10 seconds on error
 
 
 if __name__ == "__main__":
