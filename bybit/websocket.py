@@ -1,10 +1,17 @@
-import websocket,json,threading
+import websocket,json,threading,time
 prices={}
+last_update = 0
+
 def on_message(ws,msg):
+    global last_update
     data=json.loads(msg)
     if "data" in data:
         for d in data["data"]:
             prices[d["symbol"]]=float(d["lastPrice"])
+        last_update = time.time()
+        # Log every 60 seconds
+        if time.time() - last_update > 60:
+            print(f"📡 WebSocket updated {len(prices)} prices")
 
 def start_ws(symbols):
     args=[f"tickers.{s}" for s in symbols]
