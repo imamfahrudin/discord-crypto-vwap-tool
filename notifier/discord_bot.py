@@ -141,7 +141,10 @@ class VWAPBot(commands.Bot):
                 self.channel_states[channel_id]['task'] = task
 
                 print(f"✅ Restored scanner in {state_data.get('channel_name', f'channel {channel_id}')} - resuming updates")
-                print(f"🔄 Update loop resumed for channel {channel_id}")
+                print(f"🔄 Update loop resumed for channel {channel_id} - immediate update triggered")
+                
+                # Give a small delay to ensure the update loop starts and performs immediate update
+                await asyncio.sleep(0.1)
 
             except Exception as e:
                 print(f"❌ Failed to restore state for channel {channel_id}: {e}")
@@ -152,8 +155,14 @@ class VWAPBot(commands.Bot):
     async def update_loop_for_channel(self, channel_id):
         """Update loop for a specific channel"""
         print(f"🔄 Update loop started for channel {channel_id}")
+        first_update = True
+        
         while channel_id in self.channel_states and self.channel_states[channel_id]['running']:
             try:
+                if first_update:
+                    print(f"🚀 Performing immediate update for channel {channel_id} (post-restart)")
+                    first_update = False
+                
                 print(f"📊 Getting scanner data for channel {channel_id}...")
                 # Get updated data from callback
                 table_text = await self.update_callback()

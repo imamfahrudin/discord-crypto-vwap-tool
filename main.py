@@ -1,6 +1,6 @@
 import asyncio
 import aiohttp
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from bybit.rest import get_futures_symbols, get_session_candles
 from bybit.websocket import start_ws, prices
@@ -29,6 +29,9 @@ scanner_cache = {
     'last_updated': 0,
     'updating': False
 }
+
+# Flag to force fresh data on bot restart
+force_fresh_data = True
 
 async def update_scanner_cache():
     """Update the scanner cache in background"""
@@ -128,16 +131,24 @@ async def get_scanner_data_raw():
 
 async def get_scanner_data():
     """Callback function for Discord bot to get updated scanner data"""
+    global force_fresh_data
     current_time = asyncio.get_event_loop().time()
     
-    # Check if cache is fresh (less than 30 seconds old)
-    if scanner_cache['data'] and (current_time - scanner_cache['last_updated']) < 30:
+    # Force fresh data on startup or if cache is stale (more than 30 seconds old)
+    cache_fresh = scanner_cache['data'] and (current_time - scanner_cache['last_updated']) < 30
+    
+    if not force_fresh_data and cache_fresh:
         print("✅ Using cached scanner data")
-        last_updated = datetime.fromtimestamp(scanner_cache['last_updated']).strftime('%H:%M:%S')
+        # Format timestamp in both WIB and UTC like the bot expects
+        cached_utc_time = datetime.utcfromtimestamp(scanner_cache['last_updated'])
+        cached_wib_time = cached_utc_time + timedelta(hours=7)
+        last_updated = f"{cached_wib_time.strftime('%H:%M:%S')} WIB | {cached_utc_time.strftime('%H:%M:%S')} UTC"
         return scanner_cache['data'], last_updated
     
-    # Cache is stale, update it
+    # Cache is stale or fresh data is forced, update it
+    print("🔄 Forcing fresh scanner data update (startup or cache stale)" if force_fresh_data else "🔄 Cache stale, updating scanner data")
     await update_scanner_cache()
+    force_fresh_data = False  # Reset flag after first update
     
     # Return cached data (might be None if update failed)
     if scanner_cache['data']:
