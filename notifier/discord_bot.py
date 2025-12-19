@@ -126,6 +126,10 @@ class VWAPBot(discord.Client):
             # Wait before next update
             await asyncio.sleep(REFRESH_INTERVAL)
 
+    def set_update_callback(self, callback):
+        """Set the callback function to get updated data"""
+        self.update_callback = callback
+
     async def close(self):
         """Cleanup when bot is shutting down"""
         # Cancel all running update tasks
