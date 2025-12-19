@@ -285,7 +285,7 @@ class VWAPBot(commands.Bot):
                                     embed.add_field(
                                         name=f"#{rank} {symbol}",
                                         value=field_value,
-                                        inline=True
+                                        inline=False
                                     )
 
                     # Add timestamp and refresh info
