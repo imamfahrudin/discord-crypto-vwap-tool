@@ -787,6 +787,50 @@ async def stop_command(ctx):
         except Exception as followup_error:
             print(f"❌ Failed to send error message: {followup_error}")
 
+@bot.command(name="session")
+async def session_command(ctx):
+    """Check current session and trigger manual update - Usage: !session"""
+    print(f"📊 !session command received from {ctx.author}")
+    
+    try:
+        # Get current session
+        current_session, weight = detect_session()
+        
+        # Get next session info
+        next_session_name, next_session_time = get_next_session_info()
+        
+        # Get session flags
+        current_flag = get_session_flag(current_session)
+        next_flag = get_session_flag(next_session_name)
+        
+        # Check monitoring task status
+        monitoring_status = "✅ Running" if bot.session_check_task and not bot.session_check_task.done() else "❌ Not running"
+        
+        # Create info embed
+        embed = discord.Embed(
+            title="📊 Session Status",
+            description=f"**Current Session:** {current_session} {current_flag}\n**Weight:** {weight}\n**Next Session:** {next_session_name} {next_flag} at {next_session_time}\n**Monitoring Task:** {monitoring_status}\n**Tracked Session:** {bot.current_session}",
+            color=discord.Color.blue()
+        )
+        
+        # Count active scanners
+        active_count = sum(len(intervals) for intervals in bot.channel_states.values())
+        embed.add_field(name="Active Scanners", value=f"{active_count} scanner(s) running", inline=False)
+        
+        await ctx.send(embed=embed)
+        
+        # Trigger manual update for all scanners
+        if active_count > 0:
+            await ctx.send("🔄 Triggering manual update for all scanners...")
+            await bot.trigger_all_updates()
+            await ctx.send("✅ Manual update completed!")
+        
+    except Exception as e:
+        print(f"❌ Error in session_command: {e}")
+        import traceback
+        traceback.print_exc()
+        await ctx.send(f"❌ Error: {str(e)}")
+
 def send_table(table_text: str):
     """Legacy function for backward compatibility - does nothing now"""
     # This function is kept for compatibility but doesn't send anything
