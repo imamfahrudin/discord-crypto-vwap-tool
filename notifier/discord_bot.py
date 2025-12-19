@@ -103,15 +103,12 @@ class VWAPBot(commands.Bot):
         self.update_callback = None
 
     async def setup_hook(self):
-        """Setup slash commands and restore previous states"""
+        """Setup slash commands"""
         # Note: Using traditional commands instead of slash commands for reliability
         print("✅ Bot setup complete (using traditional commands)")
 
         # Initialize database
         init_database()
-
-        # Restore previous channel states
-        await self.restore_channel_states()
 
     async def restore_channel_states(self):
         """Restore channel states from database and resume scanning"""
@@ -259,6 +256,10 @@ async def on_ready():
     """Called when the bot is ready and connected to Discord"""
     print(f"🤖 {bot.user} has connected to Discord!")
     print(f"📊 Bot is in {len(bot.guilds)} servers")
+    
+    # Now that we're connected, restore previous channel states
+    await bot.restore_channel_states()
+    
     print("🎯 Ready to receive commands! Use !start in any channel to begin scanning")
 
 # Traditional commands (more reliable than slash commands)
