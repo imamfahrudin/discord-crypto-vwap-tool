@@ -152,7 +152,10 @@ async def get_scanner_data():
     
     # Return cached data (might be None if update failed)
     if scanner_cache['data']:
-        last_updated = datetime.fromtimestamp(scanner_cache['last_updated']).strftime('%H:%M:%S')
+        # Format timestamp in both WIB and UTC like the bot expects
+        fresh_utc_time = datetime.utcfromtimestamp(scanner_cache['last_updated'])
+        fresh_wib_time = fresh_utc_time + timedelta(hours=7)
+        last_updated = f"{fresh_wib_time.strftime('%H:%M:%S')} WIB | {fresh_utc_time.strftime('%H:%M:%S')} UTC"
         return scanner_cache['data'], last_updated
     else:
         return "⚠️ Scanner data not available. Please try again in a moment.", "N/A"
