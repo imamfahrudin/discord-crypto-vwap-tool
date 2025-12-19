@@ -118,7 +118,8 @@ class VWAPBot(commands.Bot):
                 # Get the channel object
                 channel = self.get_channel(channel_id)
                 if not channel:
-                    print(f"⚠️ Could not find channel {channel_id}, skipping")
+                    print(f"⚠️ Could not find channel {channel_id}, removing from database")
+                    remove_channel_state(channel_id)
                     continue
 
                 # Try to fetch the message
@@ -228,6 +229,13 @@ class VWAPBot(commands.Bot):
 
 # Global bot instance
 bot = VWAPBot()
+
+@bot.event
+async def on_ready():
+    """Called when the bot is ready and connected to Discord"""
+    print(f"🤖 {bot.user} has connected to Discord!")
+    print(f"📊 Bot is in {len(bot.guilds)} servers")
+    print("🎯 Ready to receive commands! Use !start in any channel to begin scanning")
 
 # Traditional commands (more reliable than slash commands)
 @bot.command(name="start")
