@@ -373,11 +373,15 @@ class VWAPBot(commands.Bot):
         """Update loop for a specific channel and interval"""
         print(f"🔄 Update loop started for channel {channel_id} interval {interval}s")
         first_update = True
+        loop_count = 0
         
         while (channel_id in self.channel_states and 
                interval in self.channel_states[channel_id] and 
                self.channel_states[channel_id][interval]['running']):
             try:
+                loop_count += 1
+                print(f"🔁 Update loop iteration #{loop_count} for channel {channel_id} interval {interval}s")
+                
                 if first_update:
                     print(f"🚀 Performing immediate update for channel {channel_id} interval {interval}s (post-restart)")
                     first_update = False
@@ -479,8 +483,9 @@ class VWAPBot(commands.Bot):
                 break
 
             # Wait before next update
-            print(f"⏰ Waiting {interval} seconds before next update...")
+            print(f"⏰ Waiting {interval} seconds before next update for channel {channel_id} (next update ~{(datetime.now() + timedelta(seconds=interval)).strftime('%H:%M:%S')} WIB)...")
             await asyncio.sleep(interval)
+            print(f"⏰ Sleep completed for channel {channel_id} interval {interval}s, starting next update...")
 
     async def monitor_session_changes(self):
         """Monitor for trading session changes and trigger updates"""
@@ -579,13 +584,9 @@ class VWAPBot(commands.Bot):
 
                 interval_str = format_interval(interval)
                 
-                # Calculate next update based on the scheduled interval, not current time
-                # This ensures session change updates don't disrupt the regular schedule
-                if 'last_scheduled_update' in self.channel_states[channel_id][interval]:
-                    next_update = self.channel_states[channel_id][interval]['last_scheduled_update'] + timedelta(seconds=interval)
-                else:
-                    # Fallback if last_scheduled_update not tracked yet
-                    next_update = datetime.now() + timedelta(seconds=interval)
+                # Update scheduled time to maintain accurate next update display
+                self.channel_states[channel_id][interval]['last_scheduled_update'] = datetime.now()
+                next_update = self.channel_states[channel_id][interval]['last_scheduled_update'] + timedelta(seconds=interval)
                 next_update_str = next_update.strftime('%H:%M:%S WIB')
 
                 # Generate table image
