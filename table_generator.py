@@ -31,8 +31,8 @@ def generate_table_image(table_data: str, session_name: str = "UNKNOWN", weight:
         return generate_error_image("No data available")
 
     # Create figure with custom styling
-    fig, ax = plt.subplots(figsize=(16, 10), facecolor='#1a1a1a')
-    ax.set_facecolor('#1a1a1a')
+    fig, ax = plt.subplots(figsize=(16, 10), facecolor='#ffffff')
+    ax.set_facecolor('#ffffff')
 
     # Hide axes
     ax.axis('off')
@@ -44,11 +44,11 @@ def generate_table_image(table_data: str, session_name: str = "UNKNOWN", weight:
     table.auto_set_font_size(False)
     table.set_fontsize(10)
 
-    # Define colors
-    header_color = '#2d5aa0'  # Blue header
-    alt_row_colors = ['#2a2a2a', '#1e1e1e']  # Alternating row colors
-    text_color = '#ffffff'
-    border_color = '#404040'
+    # Define colors - Light theme
+    header_color = '#2563eb'  # Blue header
+    alt_row_colors = ['#f8fafc', '#ffffff']  # Alternating light row colors
+    text_color = '#1e293b'
+    border_color = '#e2e8f0'
 
     # Column headers
     headers = ['Rank', 'Symbol', 'Signal', 'Score', 'Price', 'VWAP', 'Volume', 'RSI', 'MACD', 'Stoch']
@@ -70,13 +70,13 @@ def generate_table_image(table_data: str, session_name: str = "UNKNOWN", weight:
             cell_color = row_color
             if header == 'Signal':
                 if 'STRONG BUY' in str(value):
-                    cell_color = '#1a4d1a'  # Dark green for strong buy
+                    cell_color = '#dcfce7'  # Light green for strong buy
                 elif 'BUY' in str(value):
-                    cell_color = '#2d5016'  # Green for buy
+                    cell_color = '#ecfdf5'  # Very light green for buy
                 elif 'STRONG SELL' in str(value):
-                    cell_color = '#4d1a1a'  # Dark red for strong sell
+                    cell_color = '#fef2f2'  # Light red for strong sell
                 elif 'SELL' in str(value):
-                    cell_color = '#662020'  # Red for sell
+                    cell_color = '#fef2f2'  # Light red for sell
 
             cell = table.add_cell(i, j, width=1/len(headers), height=0.06, text=str(value),
                                  loc='center', facecolor=cell_color, edgecolor=border_color)
@@ -87,28 +87,28 @@ def generate_table_image(table_data: str, session_name: str = "UNKNOWN", weight:
     ax.add_table(table)
 
     # Add title
-    title_text = f"📊 BYBIT FUTURES VWAP SCANNER"
+    title_text = f"BYBIT FUTURES VWAP SCANNER"
     ax.text(0.5, 0.95, title_text, transform=ax.transAxes,
-            fontsize=16, fontweight='bold', color='#ffffff',
+            fontsize=16, fontweight='bold', color='#1e293b',
             ha='center', va='top')
 
     # Add session info
     session_text = f"Session: {session_name} | Weight: {weight}"
     ax.text(0.5, 0.92, session_text, transform=ax.transAxes,
-            fontsize=12, color='#cccccc',
+            fontsize=12, color='#64748b',
             ha='center', va='top')
 
     # Add timestamp
     if last_updated:
-        time_text = f"📅 {last_updated}"
+        time_text = f"Last Updated: {last_updated}"
         ax.text(0.5, 0.89, time_text, transform=ax.transAxes,
-                fontsize=10, color='#888888',
+                fontsize=10, color='#94a3b8',
                 ha='center', va='top')
 
     # Add refresh info
-    refresh_text = "🔄 Auto-updates every 30 seconds | Use !stop to end scanning"
+    refresh_text = "Auto-updates every 30 seconds | Use !stop to end scanning"
     ax.text(0.5, 0.05, refresh_text, transform=ax.transAxes,
-            fontsize=9, color='#666666',
+            fontsize=9, color='#94a3b8',
             ha='center', va='bottom')
 
     # Adjust layout
@@ -116,7 +116,7 @@ def generate_table_image(table_data: str, session_name: str = "UNKNOWN", weight:
 
     # Save to BytesIO
     buf = BytesIO()
-    fig.savefig(buf, format='png', dpi=150, facecolor='#1a1a1a',
+    fig.savefig(buf, format='png', dpi=150, facecolor='#ffffff',
                 edgecolor='none', bbox_inches='tight')
     buf.seek(0)
 
@@ -198,24 +198,24 @@ def generate_error_image(error_message: str) -> BytesIO:
     """
     plt.switch_backend('Agg')
 
-    fig, ax = plt.subplots(figsize=(12, 6), facecolor='#1a1a1a')
-    ax.set_facecolor('#1a1a1a')
+    fig, ax = plt.subplots(figsize=(12, 6), facecolor='#ffffff')
+    ax.set_facecolor('#ffffff')
     ax.axis('off')
 
     # Add error message
-    ax.text(0.5, 0.6, "❌ Error", transform=ax.transAxes,
-            fontsize=24, color='#ff6b6b', ha='center', va='center', fontweight='bold')
+    ax.text(0.5, 0.6, "Error", transform=ax.transAxes,
+            fontsize=24, color='#dc2626', ha='center', va='center', fontweight='bold')
 
     ax.text(0.5, 0.4, error_message, transform=ax.transAxes,
-            fontsize=14, color='#cccccc', ha='center', va='center')
+            fontsize=14, color='#64748b', ha='center', va='center')
 
     # Add timestamp
     timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
     ax.text(0.5, 0.1, f"Generated: {timestamp}", transform=ax.transAxes,
-            fontsize=10, color='#666666', ha='center', va='center')
+            fontsize=10, color='#94a3b8', ha='center', va='center')
 
     buf = BytesIO()
-    fig.savefig(buf, format='png', dpi=150, facecolor='#1a1a1a', edgecolor='none')
+    fig.savefig(buf, format='png', dpi=150, facecolor='#ffffff', edgecolor='none')
     buf.seek(0)
 
     plt.close(fig)
