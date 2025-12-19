@@ -255,7 +255,11 @@ class VWAPBot(commands.Bot):
                                             break
                                         signal_parts.append(part)
 
-                                    signal = ' '.join(signal_parts)
+                                    # Clean signal text by removing emojis and extra spaces
+                                    signal = ' '.join(signal_parts).strip()
+                                    # Remove common emoji patterns
+                                    import re
+                                    signal = re.sub(r'[🔴🟢⚪🔥]\s*', '', signal).strip()
                                     score = parts[score_idx] if score_idx > 0 else "N/A"
                                     price = parts[score_idx + 1] if score_idx + 1 < len(parts) else "N/A"
                                     vwap = parts[score_idx + 2] if score_idx + 2 < len(parts) else "N/A"
