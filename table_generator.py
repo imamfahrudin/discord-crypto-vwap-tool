@@ -322,6 +322,10 @@ def parse_table_data(table_data: str) -> list:
         try:
             # Extract data similar to the original parsing logic
             rank = parts[0]
+            
+            # Validate rank is numeric (skip emoji/warning lines)
+            if not rank.isdigit():
+                continue
 
             # Find symbol (usually second element)
             symbol = parts[1]

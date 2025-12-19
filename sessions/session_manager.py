@@ -1,5 +1,6 @@
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone as dt_timezone, timedelta
 from config import SESSION_WEIGHTS
+import pytz
 
 # Session definitions with local times (matching trading session notifier)
 SESSIONS_LOCAL = {
@@ -11,7 +12,7 @@ SESSIONS_LOCAL = {
 
 def detect_session():
     """Detect current active session based on UTC time and local session definitions"""
-    now_utc = datetime.now(timezone.utc)
+    now_utc = datetime.now(dt_timezone.utc)
     current_hour_utc = now_utc.hour
 
     # Convert local session times to UTC for comparison
@@ -34,9 +35,7 @@ def detect_session():
 
 def get_utc_hours_for_session(start_local, end_local, tz_name, reference_date):
     """Convert local session hours to UTC hours for a given date"""
-    from pytz import timezone
-
-    tz = timezone(tz_name)
+    tz = pytz.timezone(tz_name)
     local_date = reference_date.astimezone(tz).date()
 
     # Create local datetime objects
@@ -48,14 +47,14 @@ def get_utc_hours_for_session(start_local, end_local, tz_name, reference_date):
         end_local_dt += timedelta(days=1)
 
     # Convert to UTC
-    start_utc = start_local_dt.astimezone(timezone.utc).hour
-    end_utc = end_local_dt.astimezone(timezone.utc).hour
+    start_utc = start_local_dt.astimezone(dt_timezone.utc).hour
+    end_utc = end_local_dt.astimezone(dt_timezone.utc).hour
 
     return start_utc, end_utc
 
 def session_start_timestamp():
     """Get timestamp for current session start (legacy function)"""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(dt_timezone.utc)
     session_name, _ = detect_session()
 
     # For backward compatibility, return a timestamp
