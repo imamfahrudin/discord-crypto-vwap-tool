@@ -33,6 +33,14 @@ def init_database():
         )
     ''')
 
+    # Add guild_id column if it doesn't exist (migration)
+    try:
+        cursor.execute("ALTER TABLE channel_states ADD COLUMN guild_id INTEGER")
+        print("✅ Added guild_id column to existing database")
+    except sqlite3.OperationalError:
+        # Column already exists
+        pass
+
     conn.commit()
     conn.close()
     print("✅ Database initialized")
