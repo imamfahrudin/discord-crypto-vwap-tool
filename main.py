@@ -56,9 +56,29 @@ async def get_scanner_data_raw():
     print(f"📊 Fetched {len(symbols)} symbols, WebSocket prices available: {len(prices)}")
 
     session_name, weight = detect_session()
-    # Use last 24 hours instead of current session to ensure enough candles
-    start_ts = int((datetime.now(timezone.utc) - timedelta(hours=24)).timestamp() * 1000)
-    print(f"📊 Session: {session_name}, Weight: {weight}, Using 24h data from: {datetime.fromtimestamp(start_ts/1000, timezone.utc)}")
+    
+    # Get current session start
+    current_session_start = session_start_timestamp()
+    
+    # If current session has less than 2 hours of data, include previous session
+    now = datetime.now(timezone.utc)
+    current_session_start_time = datetime.fromtimestamp(current_session_start / 1000, timezone.utc)
+    hours_elapsed = (now - current_session_start_time).total_seconds() / 3600
+    
+    if hours_elapsed < 2:
+        # Include previous session data for more candles
+        if session_name == "LONDON":
+            prev_session_start = int(now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp() * 1000)  # Asian
+        elif session_name == "NEW_YORK":
+            prev_session_start = int(now.replace(hour=8, minute=0, second=0, microsecond=0).timestamp() * 1000)  # London
+        else:  # Asian
+            prev_session_start = int((now - timedelta(days=1)).replace(hour=16, minute=0, second=0, microsecond=0).timestamp() * 1000)  # Previous NY
+        
+        start_ts = prev_session_start
+        print(f"📊 Session: {session_name}, Weight: {weight}, Using current + previous session data (hours elapsed: {hours_elapsed:.1f})")
+    else:
+        start_ts = current_session_start
+        print(f"📊 Session: {session_name}, Weight: {weight}, Using current session data (hours elapsed: {hours_elapsed:.1f})")
 
     # Create a new session for this request
     async with aiohttp.ClientSession() as session:
@@ -73,7 +93,7 @@ async def get_scanner_data_raw():
         filtered_by_volume = 0
 
         for s, candles in zip(symbols, candle_sets):
-            if not candles or len(candles) < 50:  # Reduced from 30 to 50 for 24h data
+            if not candles or len(candles) < 20:  # Minimum 20 candles (2 hours of 5-min data)
                 filtered_by_candles += 1
                 continue
 
