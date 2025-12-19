@@ -14,7 +14,7 @@ from indicators.stochastic import stochastic
 
 from engine.scanner_engine import scan
 from output.table import render_table
-from notifier.discord_bot import bot, send_table
+from notifier.discord_bot import bot, send_table, start_bot
 
 from config import (
     MAX_SYMBOLS,
@@ -117,7 +117,7 @@ async def main():
     print("Use /stop to stop scanning")
 
     # Start the Discord bot (this will run forever)
-    await bot.start_bot()
+    await start_bot()
 
 
 if __name__ == "__main__":
