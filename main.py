@@ -140,8 +140,9 @@ async def get_scanner_data():
     if not force_fresh_data and cache_fresh:
         print("✅ Using cached scanner data")
         # Format timestamp in both WIB and UTC like the bot expects
-        cached_utc_time = datetime.utcfromtimestamp(scanner_cache['last_updated'])
-        cached_wib_time = cached_utc_time + timedelta(hours=7)
+        # Since container is in WIB timezone, datetime.now() gives WIB time
+        cached_wib_time = datetime.now()
+        cached_utc_time = datetime.utcnow()
         last_updated = f"{cached_wib_time.strftime('%H:%M:%S')} WIB | {cached_utc_time.strftime('%H:%M:%S')} UTC"
         return scanner_cache['data'], last_updated
     
@@ -153,8 +154,9 @@ async def get_scanner_data():
     # Return cached data (might be None if update failed)
     if scanner_cache['data']:
         # Format timestamp in both WIB and UTC like the bot expects
-        fresh_utc_time = datetime.utcfromtimestamp(scanner_cache['last_updated'])
-        fresh_wib_time = fresh_utc_time + timedelta(hours=7)
+        # Since container is in WIB timezone, datetime.now() gives WIB time
+        fresh_wib_time = datetime.now()
+        fresh_utc_time = datetime.utcnow()
         last_updated = f"{fresh_wib_time.strftime('%H:%M:%S')} WIB | {fresh_utc_time.strftime('%H:%M:%S')} UTC"
         return scanner_cache['data'], last_updated
     else:
