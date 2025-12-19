@@ -29,6 +29,16 @@ def init_rankings_table():
         columns = cursor.fetchall()
         column_names = [col[1] for col in columns]
         
+        # Check current UNIQUE constraint
+        cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='previous_rankings'")
+        table_sql = cursor.fetchone()
+        needs_schema_fix = False
+        
+        if table_sql and 'UNIQUE(session_name, interval, symbol)' in table_sql[0]:
+            # Old schema without scan_time in UNIQUE - needs migration
+            print("🔄 Migrating previous_rankings table to fix UNIQUE constraint...")
+            needs_schema_fix = True
+        
         if 'interval' not in column_names:
             print("🔄 Migrating previous_rankings table to add interval column...")
             
@@ -48,7 +58,7 @@ def init_rankings_table():
                     symbol TEXT NOT NULL,
                     rank INTEGER NOT NULL,
                     scan_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(session_name, interval, symbol)
+                    UNIQUE(session_name, interval, symbol, scan_time)
                 )
             ''')
             
@@ -65,6 +75,42 @@ def init_rankings_table():
                     pass
             
             print(f"✅ Migrated {len(old_data)} ranking records to new schema")
+        elif needs_schema_fix:
+            # Has interval column but wrong UNIQUE constraint
+            print("🔄 Fixing UNIQUE constraint to include scan_time...")
+            
+            # Get existing data
+            cursor.execute('SELECT session_name, interval, symbol, rank, scan_time FROM previous_rankings')
+            old_data = cursor.fetchall()
+            
+            # Drop old table
+            cursor.execute('DROP TABLE previous_rankings')
+            
+            # Create new table with correct UNIQUE constraint
+            cursor.execute('''
+                CREATE TABLE previous_rankings (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_name TEXT NOT NULL,
+                    interval INTEGER NOT NULL,
+                    symbol TEXT NOT NULL,
+                    rank INTEGER NOT NULL,
+                    scan_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(session_name, interval, symbol, scan_time)
+                )
+            ''')
+            
+            # Restore data
+            for session_name, interval, symbol, rank, scan_time in old_data:
+                try:
+                    cursor.execute('''
+                        INSERT OR IGNORE INTO previous_rankings 
+                        (session_name, interval, symbol, rank, scan_time)
+                        VALUES (?, ?, ?, ?, ?)
+                    ''', (session_name, interval, symbol, rank, scan_time))
+                except sqlite3.IntegrityError:
+                    pass
+            
+            print(f"✅ Migrated {len(old_data)} ranking records with fixed schema")
     else:
         # Create new table with interval support
         cursor.execute('''
@@ -75,7 +121,7 @@ def init_rankings_table():
                 symbol TEXT NOT NULL,
                 rank INTEGER NOT NULL,
                 scan_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(session_name, interval, symbol)
+                UNIQUE(session_name, interval, symbol, scan_time)
             )
         ''')
 
