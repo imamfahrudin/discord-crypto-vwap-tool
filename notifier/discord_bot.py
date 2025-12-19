@@ -350,7 +350,8 @@ class VWAPBot(commands.Bot):
                     self.channel_states[channel_id][interval] = {
                         'message': message,
                         'running': True,
-                        'task': None
+                        'task': None,
+                        'last_scheduled_update': datetime.now()  # Initialize with current time
                     }
 
                     # Resume the update loop
@@ -417,8 +418,9 @@ class VWAPBot(commands.Bot):
                     # Import interval formatter
                     interval_str = format_interval(interval)
 
-                    # Calculate next update time
-                    next_update = datetime.now() + timedelta(seconds=interval)
+                    # Update scheduled time and calculate next update
+                    self.channel_states[channel_id][interval]['last_scheduled_update'] = datetime.now()
+                    next_update = self.channel_states[channel_id][interval]['last_scheduled_update'] + timedelta(seconds=interval)
                     next_update_str = next_update.strftime('%H:%M:%S WIB')
 
                     # Generate table image
@@ -577,7 +579,14 @@ class VWAPBot(commands.Bot):
                             break
 
                 interval_str = format_interval(interval)
-                next_update = datetime.now() + timedelta(seconds=interval)
+                
+                # Calculate next update based on the scheduled interval, not current time
+                # This ensures session change updates don't disrupt the regular schedule
+                if 'last_scheduled_update' in self.channel_states[channel_id][interval]:
+                    next_update = self.channel_states[channel_id][interval]['last_scheduled_update'] + timedelta(seconds=interval)
+                else:
+                    # Fallback if last_scheduled_update not tracked yet
+                    next_update = datetime.now() + timedelta(seconds=interval)
                 next_update_str = next_update.strftime('%H:%M:%S WIB')
 
                 # Generate table image
@@ -699,7 +708,8 @@ async def start_command(ctx):
             bot.channel_states[channel_id][interval] = {
                 'message': message,
                 'running': True,
-                'task': None
+                'task': None,
+                'last_scheduled_update': datetime.now()  # Track scheduled update time
             }
 
             # Save state to database
