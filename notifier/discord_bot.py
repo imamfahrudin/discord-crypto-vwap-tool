@@ -485,24 +485,36 @@ class VWAPBot(commands.Bot):
         """Monitor for trading session changes and trigger updates"""
         print("🔍 Session change monitor started")
         
+        # Wait a bit for bot to fully initialize
+        await asyncio.sleep(5)
+        
         # Get initial session
-        self.current_session, _ = detect_session()
-        print(f"📊 Initial session: {self.current_session}")
+        try:
+            self.current_session, _ = detect_session()
+            print(f"📊 Initial session detected: {self.current_session}")
+        except Exception as e:
+            print(f"❌ Failed to detect initial session: {e}")
+            self.current_session = "Unknown"
         
         while True:
             try:
                 await asyncio.sleep(60)  # Check every minute
                 
                 # Detect current session
-                new_session, _ = detect_session()
+                new_session, new_weight = detect_session()
+                print(f"🔍 Session check: Current={self.current_session}, Detected={new_session}, Weight={new_weight}")
                 
                 # Check if session changed
                 if new_session != self.current_session:
                     print(f"🔄 SESSION CHANGE DETECTED: {self.current_session} → {new_session}")
+                    print(f"📊 New session weight: {new_weight}")
                     self.current_session = new_session
                     
                     # Trigger immediate update for all active channels
+                    print("🚀 Triggering session change updates for all scanners...")
                     await self.trigger_all_updates()
+                else:
+                    print(f"✅ Session unchanged: {self.current_session}")
                     
             except Exception as e:
                 print(f"❌ Error in session monitoring: {e}")
