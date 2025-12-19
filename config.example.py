@@ -21,3 +21,6 @@ SESSION_WEIGHTS = {
     "LONDON": 1.0,
     "NEW_YORK": 1.2
 }
+
+# Table image footer text (optional - leave empty for no footer)
+TABLE_FOOTER_TEXT = ""  # Example: "© 2025 Your Company Name"
