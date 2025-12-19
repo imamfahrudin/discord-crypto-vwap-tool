@@ -86,7 +86,7 @@ def save_previous_rankings(session_name: str, rankings: list, interval: int = 12
     """Save current rankings for a session and interval to database
     
     Args:
-        session_name: Trading session name (ASIAN, LONDON, NEW_YORK)
+        session_name: Trading session name (Sydney, Tokyo, London, New York)
         rankings: List of (symbol, rank) tuples
         interval: Refresh interval in seconds (default: 120)
     """
