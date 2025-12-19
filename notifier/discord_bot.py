@@ -4,8 +4,83 @@ import discord
 from discord.ext import commands, tasks
 import asyncio
 from datetime import datetime
+import sqlite3
+import os
 from config import DISCORD_BOT_TOKEN, REFRESH_INTERVAL
 from typing import Optional
+
+# Database setup
+DB_PATH = '/app/data/bot_states.db' if os.path.exists('/app') else 'bot_states.db'
+
+def init_database():
+    """Initialize the database and create tables if they don't exist"""
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    # Create channel_states table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS channel_states (
+            channel_id INTEGER PRIMARY KEY,
+            message_id INTEGER NOT NULL,
+            running BOOLEAN NOT NULL DEFAULT 0,
+            server_name TEXT,
+            channel_name TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    conn.commit()
+    conn.close()
+    print("✅ Database initialized")
+
+def save_channel_state(channel_id, message_id, running, server_name=None, channel_name=None):
+    """Save or update channel state in database"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        INSERT OR REPLACE INTO channel_states
+        (channel_id, message_id, running, server_name, channel_name, updated_at)
+        VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ''', (channel_id, message_id, running, server_name, channel_name))
+
+    conn.commit()
+    conn.close()
+
+def load_channel_states():
+    """Load all channel states from database"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT channel_id, message_id, running, server_name, channel_name FROM channel_states WHERE running = 1')
+    rows = cursor.fetchall()
+
+    conn.close()
+
+    states = {}
+    for row in rows:
+        channel_id, message_id, running, server_name, channel_name = row
+        states[channel_id] = {
+            'message_id': message_id,
+            'running': bool(running),
+            'server_name': server_name,
+            'channel_name': channel_name
+        }
+
+    return states
+
+def remove_channel_state(channel_id):
+    """Remove channel state from database"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('DELETE FROM channel_states WHERE channel_id = ?', (channel_id,))
+
+    conn.commit()
+    conn.close()
 
 class VWAPBot(commands.Bot):
     def __init__(self):
@@ -18,9 +93,60 @@ class VWAPBot(commands.Bot):
         self.update_callback = None
 
     async def setup_hook(self):
-        """Setup slash commands"""
+        """Setup slash commands and restore previous states"""
         # Note: Using traditional commands instead of slash commands for reliability
         print("✅ Bot setup complete (using traditional commands)")
+
+        # Initialize database
+        init_database()
+
+        # Restore previous channel states
+        await self.restore_channel_states()
+
+    async def restore_channel_states(self):
+        """Restore channel states from database and resume scanning"""
+        saved_states = load_channel_states()
+
+        if not saved_states:
+            print("ℹ️ No previous channel states to restore")
+            return
+
+        print(f"🔄 Restoring {len(saved_states)} channel states from database...")
+
+        for channel_id, state_data in saved_states.items():
+            try:
+                # Get the channel object
+                channel = self.get_channel(channel_id)
+                if not channel:
+                    print(f"⚠️ Could not find channel {channel_id}, skipping")
+                    continue
+
+                # Try to fetch the message
+                try:
+                    message = await channel.fetch_message(state_data['message_id'])
+                except discord.NotFound:
+                    print(f"⚠️ Message {state_data['message_id']} not found in channel {channel_id}, skipping")
+                    remove_channel_state(channel_id)
+                    continue
+
+                # Restore the state
+                self.channel_states[channel_id] = {
+                    'message': message,
+                    'running': True,
+                    'task': None
+                }
+
+                # Resume the update loop
+                task = asyncio.create_task(self.update_loop_for_channel(channel_id))
+                self.channel_states[channel_id]['task'] = task
+
+                print(f"✅ Restored scanner in {state_data.get('channel_name', f'channel {channel_id}')}")
+
+            except Exception as e:
+                print(f"❌ Failed to restore state for channel {channel_id}: {e}")
+                remove_channel_state(channel_id)
+
+        print("✅ Channel state restoration complete")
 
     async def update_loop_for_channel(self, channel_id):
         """Update loop for a specific channel"""
@@ -125,6 +251,10 @@ async def start_command(ctx):
             'task': None
         }
 
+        # Save state to database
+        server_name = ctx.guild.name if ctx.guild else "DM"
+        save_channel_state(channel_id, message.id, True, server_name, ctx.channel.name)
+
         # Start the update loop for this channel
         print(f"🔄 Starting update loop for channel {channel_id}")
         task = asyncio.create_task(bot.update_loop_for_channel(channel_id))
@@ -174,6 +304,9 @@ async def stop_command(ctx):
 
         # Clean up channel state
         del bot.channel_states[channel_id]
+
+        # Remove from database
+        remove_channel_state(channel_id)
 
         await ctx.send("✅ VWAP scanner stopped!")
 

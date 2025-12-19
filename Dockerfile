@@ -14,5 +14,8 @@ RUN apt-get update && apt-get install -y curl && \
 
 COPY . .
 
+# Create data directory for database persistence
+RUN mkdir -p /app/data
+
 ENV PYTHONUNBUFFERED=1
 CMD ["sh", "-c", "cloudflared proxy-dns --upstream https://1.1.1.1/dns-query --port 53 & python -u main.py"]
