@@ -321,8 +321,8 @@ async def start_command(ctx):
         print("📤 Sending initial message...")
         # Send initial message
         embed = discord.Embed(
-            title="📊 VWAP Scanner",
-            description="🔄 Starting VWAP scanner...\n⏰ Loading data...",
+            title="VWAP Scanner",
+            description="Starting VWAP scanner...\nLoading data...",
             color=discord.Color.blue()
         )
 
@@ -380,8 +380,8 @@ async def stop_command(ctx):
             print("✅ Update task cancelled")
 
         embed = discord.Embed(
-            title="📊 VWAP Scanner",
-            description="⏹️ VWAP scanner stopped",
+            title="VWAP Scanner",
+            description="VWAP scanner stopped",
             color=discord.Color.red()
         )
 
