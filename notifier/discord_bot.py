@@ -39,7 +39,7 @@ class VWAPBot(commands.Bot):
                         table_data, last_updated = table_text
                     else:
                         table_data = table_text
-                        last_updated = datetime.now().strftime('%H:%M:%S')
+                        last_updated = datetime.utcnow().strftime('%H:%M:%S UTC')
                     
                     embed = discord.Embed(
                         title="📊 VWAP Scanner",
