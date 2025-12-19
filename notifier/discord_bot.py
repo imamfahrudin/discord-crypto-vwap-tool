@@ -3,7 +3,7 @@
 import discord
 from discord.ext import commands, tasks
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import sqlite3
 import os
 from config import DISCORD_BOT_TOKEN, REFRESH_INTERVAL, TABLE_FOOTER_TEXT, EMBED_FOOTER_TEXT
@@ -21,6 +21,30 @@ def get_session_flag(session_name: str) -> str:
         'ASIA': '🌏'
     }
     return flags.get(session_name.upper(), '')
+
+def get_next_session_info() -> tuple[str, str]:
+    """Get the next trading session name and start time"""
+    now = datetime.now(timezone.utc)
+    current_hour = now.hour
+    
+    if current_hour < 8:
+        # Currently ASIAN, next is LONDON at 08:00 UTC
+        next_session = "LONDON"
+        next_time = now.replace(hour=8, minute=0, second=0, microsecond=0)
+    elif current_hour < 16:
+        # Currently LONDON, next is NEW_YORK at 16:00 UTC
+        next_session = "NEW_YORK"
+        next_time = now.replace(hour=16, minute=0, second=0, microsecond=0)
+    else:
+        # Currently NEW_YORK, next is ASIAN at 00:00 UTC (tomorrow)
+        next_session = "ASIAN"
+        next_time = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+    
+    # Format time as WIB (UTC+7)
+    next_time_wib = next_time + timedelta(hours=7)
+    time_str = next_time_wib.strftime('%H:%M:%S WIB')
+    
+    return next_session, time_str
 
 # Database setup
 DB_PATH = '/app/data/bot_states.db' if os.path.exists('/app') else 'bot_states.db'
@@ -372,9 +396,13 @@ class VWAPBot(commands.Bot):
                     # Get flag emoji for session
                     session_flag = get_session_flag(session_name)
                     
+                    # Get next session info
+                    next_session_name, next_session_time = get_next_session_info()
+                    next_session_flag = get_session_flag(next_session_name)
+                    
                     embed = discord.Embed(
                         title=f"BYBIT FUTURES VWAP SCANNER - UPDATED EVERY {interval_str.upper()}",
-                        description=f"**Current Session:** {session_name} {session_flag}\n**Weight:** {weight}\n**Last Updated:** {last_updated}\n**Next Update:** {next_update_str}",
+                        description=f"**Current Session:** {session_name} {session_flag}\n**Weight:** {weight}\n**Last Updated:** {last_updated}\n**Next Update:** {next_update_str}\n**Next Session:** {next_session_name} {next_session_flag} at {next_session_time}",
                         color=discord.Color.blue()
                     )
 
