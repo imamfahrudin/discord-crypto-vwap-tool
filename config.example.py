@@ -1,6 +1,6 @@
 # config.example.py - Copy this to config.py and fill in your actual values
 
-DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN"
+DISCORD_BOT_TOKEN = "YOUR_DISCORD_BOT_TOKEN_HERE"
 
 MAX_SYMBOLS = 120
 REFRESH_INTERVAL = 120  # ⏱️

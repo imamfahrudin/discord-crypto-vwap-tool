@@ -4,14 +4,15 @@
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg)](https://www.docker.com/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-An intelligent Discord bot that scans cryptocurrency futures for VWAP (Volume Weighted Average Price) signals across multiple trading sessions. Features real-time scanning, technical indicators analysis, and automated Discord webhook notifications with comprehensive signal tables.
+An intelligent Discord bot that scans cryptocurrency futures for VWAP (Volume Weighted Average Price) signals across multiple trading sessions. Features real-time scanning, technical indicators analysis, and interactive Discord bot commands with live-updating signal tables.
 
 ## 🌟 Features
 
 - **Real-time VWAP Scanning**: Analyzes crypto futures using VWAP across Asian, London, and New York sessions
 - **Multi-Session Analysis**: Weighted scoring system for different trading sessions (Asian: 0.7x, London: 1.0x, New York: 1.2x)
 - **Technical Indicators**: RSI, MACD, and Stochastic analysis for signal confirmation
-- **Discord Integration**: Automated webhook notifications with formatted signal tables
+- **Discord Bot Integration**: Interactive slash commands (`/start`, `/stop`) with live-updating signal tables
+- **Single Message Updates**: One persistent message that updates in real-time instead of multiple notifications
 - **Volume Filtering**: Minimum volume thresholds to ensure signal quality
 - **Configurable Scoring**: Customizable score thresholds for different signal strengths
 - **Docker Support**: Ready-to-deploy with Docker and Docker Compose
@@ -24,8 +25,34 @@ An intelligent Discord bot that scans cryptocurrency futures for VWAP (Volume We
 
 - Python 3.9 or higher
 - Docker and Docker Compose (optional, for containerized deployment)
-- Discord webhook URL for notifications
+- Discord Bot Token (create a bot at https://discord.com/developers/applications)
 - Internet connection for API access
+
+## 🤖 Discord Bot Setup
+
+### Creating a Discord Bot
+
+1. **Go to Discord Developer Portal**
+   - Visit https://discord.com/developers/applications
+   - Click "New Application" and give it a name
+
+2. **Create a Bot**
+   - Go to the "Bot" section in the left sidebar
+   - Click "Add Bot" and confirm
+   - Copy the **Token** (keep this secret!)
+
+3. **Configure Bot Permissions**
+   - Go to the "General Information" section
+   - Copy the **Application ID**
+   - Go to this URL to invite your bot: `https://discord.com/api/oauth2/authorize?client_id=YOUR_APPLICATION_ID&permissions=2048&scope=bot%20applications.commands`
+   - Replace `YOUR_APPLICATION_ID` with your Application ID
+   - Select your server and authorize the bot
+
+4. **Required Permissions**
+   - ✅ Send Messages
+   - ✅ Use Slash Commands
+   - ✅ Read Message History
+   - ✅ Embed Links
 
 ## 🚀 Quick Start
 
@@ -98,7 +125,7 @@ cp config.example.py config.py
 Then edit `config.py` with your settings:
 
 ```python
-DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN"
+DISCORD_BOT_TOKEN = "YOUR_DISCORD_BOT_TOKEN_HERE"
 
 MAX_SYMBOLS = 120          # Maximum symbols to scan
 REFRESH_INTERVAL = 120     # Scan interval in seconds
@@ -120,7 +147,7 @@ SESSION_WEIGHTS = {
 ```
 
 **Configuration Options:**
-- **DISCORD_WEBHOOK_URL** (required): Your Discord webhook URL for sending notifications
+- **DISCORD_BOT_TOKEN** (required): Your Discord bot token from the Developer Portal
 - **MAX_SYMBOLS** (optional): Maximum number of symbols to scan. Default: 120
 - **REFRESH_INTERVAL** (optional): How often to scan in seconds. Default: 120
 - **TOP_N** (optional): Number of top signals to display. Default: 15
@@ -136,8 +163,8 @@ SESSION_WEIGHTS = {
 4. **Technical Analysis**: Applies RSI, MACD, and Stochastic indicators
 5. **Signal Scoring**: Calculates weighted scores based on session importance
 6. **Table Generation**: Creates formatted signal tables with emojis and metrics
-7. **Discord Notification**: Sends automated webhook notifications with signal tables
-8. **Continuous Scanning**: Repeats the process at configured intervals
+7. **Discord Bot Commands**: Use `/start` to begin scanning and `/stop` to end
+8. **Live Updates**: Single message updates in real-time at configured intervals
 
 ## 📊 Usage
 
@@ -174,6 +201,26 @@ The bot analyzes three major trading sessions with different weights:
 
 Higher weight sessions have more influence on the final signal score.
 
+## 🤖 Discord Bot Commands
+
+### `/start`
+- **Description**: Starts the VWAP scanner and sends live updates to the current channel
+- **Usage**: Type `/start` in any text channel where the bot has permissions
+- **Behavior**:
+  - Sends an initial message with "Starting VWAP scanner..."
+  - Updates the same message every `REFRESH_INTERVAL` seconds with fresh data
+  - Can run independently in multiple channels simultaneously
+  - Only one scanner per channel allowed
+
+### `/stop`
+- **Description**: Stops the VWAP scanner and ends live updates
+- **Usage**: Type `/stop` while the scanner is running
+- **Behavior**: Updates the message with "VWAP scanner stopped" and stops all updates
+
+### Command Permissions
+- Both commands are available to all users in channels where the bot has "Use Slash Commands" permission
+- The bot must have "Send Messages" and "Embed Links" permissions in the channel
+
 ## 📝 Logging
 
 The bot provides console logging for monitoring:
@@ -194,16 +241,20 @@ docker-compose logs -f
 ## 🐛 Troubleshooting
 
 ### Bot doesn't start
-- **Issue**: Invalid Discord webhook URL
-- **Solution**: Verify webhook URL in `config.py` and ensure it has proper permissions
+- **Issue**: Invalid Discord bot token
+- **Solution**: Verify bot token in `config.py` and ensure the bot has proper permissions in your server
+
+### Bot doesn't respond to commands
+- **Issue**: Missing slash command permissions or bot not invited properly
+- **Solution**: Ensure bot has "Use Slash Commands" permission and was invited with the correct scopes
 
 ### No signals generated
 - **Issue**: API connection failure or low volume pairs
 - **Solution**: Check internet connection and verify minimum volume settings
 
-### Webhook errors
-- **Issue**: Discord webhook issues
-- **Solution**: Verify webhook URL is correct and hasn't expired
+### Bot permissions errors
+- **Issue**: Bot lacks required permissions in the channel
+- **Solution**: Ensure bot has "Send Messages", "Use Slash Commands", and "Embed Links" permissions
 
 ### Configuration errors
 - **Issue**: Missing or invalid config.py
