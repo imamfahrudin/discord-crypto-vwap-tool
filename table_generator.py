@@ -112,7 +112,7 @@ def calculate_rank_changes(current_rankings: list, previous_rankings: list, sess
 
     return rank_changes
 
-def generate_table_image(table_data: str, session_name: str = "UNKNOWN", weight: str = "0.0", last_updated: str = None, footer_text: str = None) -> BytesIO:
+def generate_table_image(table_data: str, session_name: str = "UNKNOWN", weight: str = "0.0", last_updated: str = None, footer_text: str = None, interval_str: str = None) -> BytesIO:
     """
     Generate a table image from VWAP scanner data.
 
@@ -122,6 +122,7 @@ def generate_table_image(table_data: str, session_name: str = "UNKNOWN", weight:
         weight: Session weight value
         last_updated: Timestamp string
         footer_text: Optional footer text to display at bottom
+        interval_str: Optional interval string (e.g., "10m", "30m", "1h") for title
 
     Returns:
         BytesIO object containing the table image
@@ -240,8 +241,11 @@ def generate_table_image(table_data: str, session_name: str = "UNKNOWN", weight:
     # Add table to axes
     ax.add_table(table)
 
-    # Add title
-    title_text = f"BYBIT FUTURES VWAP SCANNER"
+    # Add title with optional interval/timeframe
+    if interval_str:
+        title_text = f"BYBIT FUTURES VWAP SCANNER - {interval_str.upper()} TIMEFRAME"
+    else:
+        title_text = f"BYBIT FUTURES VWAP SCANNER"
     ax.text(0.5, 0.95, title_text, transform=ax.transAxes,
             fontsize=16, fontweight='bold', color='#1e293b',
             ha='center', va='top')

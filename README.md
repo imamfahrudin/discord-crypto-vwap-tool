@@ -9,10 +9,11 @@ An intelligent Discord bot that scans cryptocurrency futures for VWAP (Volume We
 ## 🌟 Features
 
 - **Real-time VWAP Scanning**: Analyzes crypto futures using VWAP across Asian, London, and New York sessions
+- **Multi-Interval Support**: Configure multiple refresh intervals for different time horizons (e.g., 10m, 30m, 1h)
 - **Multi-Session Analysis**: Weighted scoring system for different trading sessions (Asian: 0.7x, London: 1.0x, New York: 1.2x)
 - **Technical Indicators**: RSI, MACD, and Stochastic analysis for signal confirmation
-- **Discord Bot Integration**: Interactive slash commands (`/start`, `/stop`) with live-updating signal tables
-- **Single Message Updates**: One persistent message that updates in real-time instead of multiple notifications
+- **Discord Bot Integration**: Interactive commands (`!start`, `!stop`) with live-updating signal tables
+- **Independent Message Updates**: Multiple tables update independently at their own intervals
 - **Volume Filtering**: Minimum volume thresholds to ensure signal quality
 - **Configurable Scoring**: Customizable score thresholds for different signal strengths
 - **Docker Support**: Ready-to-deploy with Docker and Docker Compose
@@ -20,6 +21,7 @@ An intelligent Discord bot that scans cryptocurrency futures for VWAP (Volume We
 - **Session-Based Weighting**: Different importance weights for each trading session
 - **Error Handling**: Robust error handling and logging for reliable operation
 - **Rate Limiting**: Built-in delays to respect API limits
+- **Persistent State**: Bot remembers active scanners across restarts
 
 ## 📋 Prerequisites
 
@@ -128,7 +130,9 @@ Then edit `config.py` with your settings:
 DISCORD_BOT_TOKEN = "YOUR_DISCORD_BOT_TOKEN_HERE"
 
 MAX_SYMBOLS = 120          # Maximum symbols to scan
-REFRESH_INTERVAL = 120     # Scan interval in seconds
+# ⏱️ Refresh intervals in seconds (comma-separated for multiple tables)
+# Examples: "120" (single 2m table), "600,1800,3600" (10m, 30m, 1h tables)
+REFRESH_INTERVAL = "120"   # Can be single value or comma-separated
 TOP_N = 15                 # Number of top signals to display
 MIN_VOLUME_M = 0.3         # Minimum volume in millions USDT
 
@@ -149,7 +153,11 @@ SESSION_WEIGHTS = {
 **Configuration Options:**
 - **DISCORD_BOT_TOKEN** (required): Your Discord bot token from the Developer Portal
 - **MAX_SYMBOLS** (optional): Maximum number of symbols to scan. Default: 120
-- **REFRESH_INTERVAL** (optional): How often to scan in seconds. Default: 120
+- **REFRESH_INTERVAL** (optional): Refresh interval(s) in seconds. 
+  - Single interval: `"120"` (one table updating every 2 minutes)
+  - Multiple intervals: `"600,1800,3600"` (three tables: 10m, 30m, and 1h)
+  - When multiple intervals are specified, each gets its own message that updates independently
+  - Default: `"120"`
 - **TOP_N** (optional): Number of top signals to display. Default: 15
 - **MIN_VOLUME_M** (optional): Minimum volume in millions USDT. Default: 0.3
 - **Score Thresholds**: Customize signal strength thresholds
@@ -203,22 +211,36 @@ Higher weight sessions have more influence on the final signal score.
 
 ## 🤖 Discord Bot Commands
 
-### `/start`
+### `!start`
 - **Description**: Starts the VWAP scanner and sends live updates to the current channel
-- **Usage**: Type `/start` in any text channel where the bot has permissions
+- **Usage**: Type `!start` in any text channel where the bot has permissions
 - **Behavior**:
-  - Sends an initial message with "Starting VWAP scanner..."
-  - Updates the same message every `REFRESH_INTERVAL` seconds with fresh data
+  - Sends initial message(s) with "Starting VWAP scanner..."
+  - If single interval: Creates one message that updates at that interval
+  - If multiple intervals: Creates separate messages for each interval (e.g., 10m, 30m, 1h)
+  - Each message updates independently at its configured interval
   - Can run independently in multiple channels simultaneously
-  - Only one scanner per channel allowed
+  - Only one scanner set per channel allowed
 
-### `/stop`
-- **Description**: Stops the VWAP scanner and ends live updates
-- **Usage**: Type `/stop` while the scanner is running
-- **Behavior**: Updates the message with "VWAP scanner stopped" and stops all updates
+**Examples:**
+- With `REFRESH_INTERVAL = "120"`: Creates 1 message updating every 2 minutes
+- With `REFRESH_INTERVAL = "600,1800,3600"`: Creates 3 messages:
+  - **10-minute table**: `BYBIT FUTURES VWAP SCANNER - 10M TIMEFRAME` (updates every 10 min)
+  - **30-minute table**: `BYBIT FUTURES VWAP SCANNER - 30M TIMEFRAME` (updates every 30 min)
+  - **1-hour table**: `BYBIT FUTURES VWAP SCANNER - 1H TIMEFRAME` (updates every hour)
+
+Each table clearly displays its timeframe in both the Discord embed title and the table image header.
+
+### `!stop`
+- **Description**: Stops all VWAP scanner instances and ends live updates
+- **Usage**: Type `!stop` while the scanner is running
+- **Behavior**: 
+  - Stops all interval timers for the current channel
+  - Updates all messages with "VWAP scanner stopped"
+  - Cleans up all running tasks and database entries
 
 ### Command Permissions
-- Both commands are available to all users in channels where the bot has "Use Slash Commands" permission
+- Both commands are available to all users in channels where the bot has message permissions
 - The bot must have "Send Messages" and "Embed Links" permissions in the channel
 
 ## 📝 Logging

@@ -3,7 +3,9 @@
 DISCORD_BOT_TOKEN = "YOUR_DISCORD_BOT_TOKEN_HERE"
 
 MAX_SYMBOLS = 120
-REFRESH_INTERVAL = 120  # ⏱️
+# ⏱️ Refresh intervals in seconds (comma-separated for multiple tables)
+# Examples: "120" (single 2m table), "600,1800,3600" (10m, 30m, 1h tables)
+REFRESH_INTERVAL = "120"
 
 TOP_N = 15
 

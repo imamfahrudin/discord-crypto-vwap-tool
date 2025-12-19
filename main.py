@@ -22,6 +22,7 @@ from config import (
     REFRESH_INTERVAL,
     MIN_VOLUME_M
 )
+from utils.interval_parser import parse_intervals
 
 # Global cache for scanner data
 scanner_cache = {
@@ -216,10 +217,15 @@ async def main():
 
 async def cache_updater():
     """Background task to keep scanner cache fresh"""
+    # Parse intervals and use the minimum interval for cache updates
+    intervals = parse_intervals(REFRESH_INTERVAL)
+    min_interval = min(intervals)
+    print(f"📊 Cache updater using minimum interval: {min_interval}s from {intervals}")
+    
     while True:
         try:
             await update_scanner_cache()
-            await asyncio.sleep(REFRESH_INTERVAL)  # Update every refresh interval
+            await asyncio.sleep(min_interval)  # Update every minimum refresh interval
         except Exception as e:
             print(f"❌ Cache updater error: {e}")
             await asyncio.sleep(10)  # Retry in 10 seconds on error

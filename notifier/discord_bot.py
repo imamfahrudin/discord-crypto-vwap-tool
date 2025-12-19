@@ -9,6 +9,7 @@ import os
 from config import DISCORD_BOT_TOKEN, REFRESH_INTERVAL, TABLE_FOOTER_TEXT
 from typing import Optional
 from table_generator import generate_table_image
+from utils.interval_parser import parse_intervals, format_interval
 
 # Database setup
 DB_PATH = '/app/data/bot_states.db' if os.path.exists('/app') else 'bot_states.db'
@@ -26,14 +27,16 @@ def init_database():
     # Create channel_states table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS channel_states (
-            channel_id INTEGER PRIMARY KEY,
+            channel_id INTEGER NOT NULL,
+            interval INTEGER NOT NULL,
             message_id INTEGER NOT NULL,
             guild_id INTEGER,
             running BOOLEAN NOT NULL DEFAULT 0,
             server_name TEXT,
             channel_name TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (channel_id, interval)
         )
     ''')
 
@@ -111,16 +114,16 @@ def init_database():
     conn.close()
     print("✅ Database initialized")
 
-def save_channel_state(channel_id, message_id, running, server_name=None, channel_name=None, guild_id=None):
+def save_channel_state(channel_id, interval, message_id, running, server_name=None, channel_name=None, guild_id=None):
     """Save or update channel state in database"""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute('''
         INSERT OR REPLACE INTO channel_states
-        (channel_id, message_id, guild_id, running, server_name, channel_name, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-    ''', (channel_id, message_id, guild_id, running, server_name, channel_name))
+        (channel_id, interval, message_id, guild_id, running, server_name, channel_name, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ''', (channel_id, interval, message_id, guild_id, running, server_name, channel_name))
 
     conn.commit()
     conn.close()
@@ -130,15 +133,20 @@ def load_channel_states():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    cursor.execute('SELECT channel_id, message_id, guild_id, running, server_name, channel_name FROM channel_states WHERE running = 1')
+    cursor.execute('SELECT channel_id, interval, message_id, guild_id, running, server_name, channel_name FROM channel_states WHERE running = 1')
     rows = cursor.fetchall()
 
     conn.close()
 
     states = {}
     for row in rows:
-        channel_id, message_id, guild_id, running, server_name, channel_name = row
-        states[channel_id] = {
+        channel_id, interval, message_id, guild_id, running, server_name, channel_name = row
+        
+        # Create nested structure: states[channel_id][interval]
+        if channel_id not in states:
+            states[channel_id] = {}
+        
+        states[channel_id][interval] = {
             'message_id': message_id,
             'guild_id': guild_id,
             'running': bool(running),
@@ -148,12 +156,22 @@ def load_channel_states():
 
     return states
 
-def remove_channel_state(channel_id):
-    """Remove channel state from database"""
+def remove_channel_state(channel_id, interval=None):
+    """Remove channel state from database
+    
+    Args:
+        channel_id: Discord channel ID
+        interval: Specific interval to remove, or None to remove all intervals
+    """
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    cursor.execute('DELETE FROM channel_states WHERE channel_id = ?', (channel_id,))
+    if interval is None:
+        # Remove all intervals for this channel
+        cursor.execute('DELETE FROM channel_states WHERE channel_id = ?', (channel_id,))
+    else:
+        # Remove specific interval
+        cursor.execute('DELETE FROM channel_states WHERE channel_id = ? AND interval = ?', (channel_id, interval))
 
     conn.commit()
     conn.close()
@@ -193,8 +211,9 @@ class VWAPBot(commands.Bot):
         intents.message_content = True
         super().__init__(command_prefix="!", intents=intents)
 
-        # Track per-channel state
-        self.channel_states = {}  # channel_id -> {'message': Message, 'running': bool, 'task': Task}
+        # Track per-channel, per-interval state
+        # Structure: channel_states[channel_id][interval] = {'message': Message, 'running': bool, 'task': Task}
+        self.channel_states = {}
         self.update_callback = None
 
     async def setup_hook(self):
@@ -213,85 +232,95 @@ class VWAPBot(commands.Bot):
             print("ℹ️ No previous channel states to restore")
             return
 
-        print(f"🔄 Restoring {len(saved_states)} channel states from database...")
+        total_states = sum(len(intervals) for intervals in saved_states.values())
+        print(f"🔄 Restoring {total_states} interval states across {len(saved_states)} channels from database...")
 
-        for channel_id, state_data in saved_states.items():
-            try:
-                print(f"🔍 Attempting to restore channel {channel_id} (guild: {state_data.get('guild_id')}, server: {state_data.get('server_name')})")
-                
-                # Get the channel object - try multiple methods
-                channel = None
-                
-                # First try direct channel lookup
-                channel = self.get_channel(channel_id)
-                
-                # If that fails and we have a guild_id, try guild-specific lookup
-                if not channel and state_data.get('guild_id'):
-                    guild = self.get_guild(state_data['guild_id'])
-                    if guild:
-                        channel = guild.get_channel(channel_id)
-                        print(f"✅ Found channel via guild lookup: {guild.name}")
-                
-                if not channel:
-                    print(f"⚠️ Could not find channel {channel_id} (guild: {state_data.get('guild_id')}), removing from database")
-                    print(f"   Available guilds: {[g.name for g in self.guilds]}")
-                    remove_channel_state(channel_id)
-                    continue
-
-                # Try to fetch the message
+        for channel_id, intervals_data in saved_states.items():
+            for interval, state_data in intervals_data.items():
                 try:
-                    message = await channel.fetch_message(state_data['message_id'])
-                except discord.NotFound:
-                    print(f"⚠️ Message {state_data['message_id']} not found in channel {channel_id}, skipping")
-                    remove_channel_state(channel_id)
-                    continue
+                    print(f"🔍 Attempting to restore channel {channel_id}, interval {interval}s (guild: {state_data.get('guild_id')}, server: {state_data.get('server_name')})")
+                    
+                    # Get the channel object - try multiple methods
+                    channel = None
+                    
+                    # First try direct channel lookup
+                    channel = self.get_channel(channel_id)
+                    
+                    # If that fails and we have a guild_id, try guild-specific lookup
+                    if not channel and state_data.get('guild_id'):
+                        guild = self.get_guild(state_data['guild_id'])
+                        if guild:
+                            channel = guild.get_channel(channel_id)
+                            print(f"✅ Found channel via guild lookup: {guild.name}")
+                    
+                    if not channel:
+                        print(f"⚠️ Could not find channel {channel_id} (guild: {state_data.get('guild_id')}), removing from database")
+                        print(f"   Available guilds: {[g.name for g in self.guilds]}")
+                        remove_channel_state(channel_id, interval)
+                        continue
 
-                # Check if this channel is already running (maybe from a manual !start command)
-                if channel_id in self.channel_states and self.channel_states[channel_id]['running']:
-                    print(f"ℹ️ Channel {channel_id} already running, skipping restoration")
-                    continue
+                    # Try to fetch the message
+                    try:
+                        message = await channel.fetch_message(state_data['message_id'])
+                    except discord.NotFound:
+                        print(f"⚠️ Message {state_data['message_id']} not found in channel {channel_id}, skipping")
+                        remove_channel_state(channel_id, interval)
+                        continue
 
-                # Restore the state
-                self.channel_states[channel_id] = {
-                    'message': message,
-                    'running': True,
-                    'task': None
-                }
+                    # Check if this channel+interval is already running
+                    if (channel_id in self.channel_states and 
+                        interval in self.channel_states[channel_id] and 
+                        self.channel_states[channel_id][interval]['running']):
+                        print(f"ℹ️ Channel {channel_id} interval {interval}s already running, skipping restoration")
+                        continue
 
-                # Resume the update loop
-                task = asyncio.create_task(self.update_loop_for_channel(channel_id))
-                self.channel_states[channel_id]['task'] = task
+                    # Initialize channel_states structure if needed
+                    if channel_id not in self.channel_states:
+                        self.channel_states[channel_id] = {}
 
-                print(f"✅ Restored scanner in {state_data.get('channel_name', f'channel {channel_id}')} - resuming updates")
-                print(f"🔄 Update loop resumed for channel {channel_id} - immediate update triggered")
-                
-                # Give a small delay to ensure the update loop starts and performs immediate update
-                await asyncio.sleep(0.1)
+                    # Restore the state
+                    self.channel_states[channel_id][interval] = {
+                        'message': message,
+                        'running': True,
+                        'task': None
+                    }
 
-            except Exception as e:
-                print(f"❌ Failed to restore state for channel {channel_id}: {e}")
-                remove_channel_state(channel_id)
+                    # Resume the update loop
+                    task = asyncio.create_task(self.update_loop_for_channel(channel_id, interval))
+                    self.channel_states[channel_id][interval]['task'] = task
+
+                    print(f"✅ Restored scanner in {state_data.get('channel_name', f'channel {channel_id}')} [{interval}s] - resuming updates")
+                    print(f"🔄 Update loop resumed for channel {channel_id} interval {interval}s - immediate update triggered")
+                    
+                    # Give a small delay to ensure the update loop starts and performs immediate update
+                    await asyncio.sleep(0.1)
+
+                except Exception as e:
+                    print(f"❌ Failed to restore state for channel {channel_id} interval {interval}s: {e}")
+                    remove_channel_state(channel_id, interval)
 
         print("✅ Channel state restoration complete")
 
-    async def update_loop_for_channel(self, channel_id):
-        """Update loop for a specific channel"""
-        print(f"🔄 Update loop started for channel {channel_id}")
+    async def update_loop_for_channel(self, channel_id, interval):
+        """Update loop for a specific channel and interval"""
+        print(f"🔄 Update loop started for channel {channel_id} interval {interval}s")
         first_update = True
         
-        while channel_id in self.channel_states and self.channel_states[channel_id]['running']:
+        while (channel_id in self.channel_states and 
+               interval in self.channel_states[channel_id] and 
+               self.channel_states[channel_id][interval]['running']):
             try:
                 if first_update:
-                    print(f"🚀 Performing immediate update for channel {channel_id} (post-restart)")
+                    print(f"🚀 Performing immediate update for channel {channel_id} interval {interval}s (post-restart)")
                     first_update = False
                 
-                print(f"📊 Getting scanner data for channel {channel_id}...")
+                print(f"📊 Getting scanner data for channel {channel_id} interval {interval}s...")
                 # Get updated data from callback
                 table_text = await self.update_callback()
                 print(f"✅ Got scanner data ({len(table_text) if table_text else 0} chars)")
 
-                if table_text and channel_id in self.channel_states:
-                    print(f"📤 Updating message in channel {channel_id}")
+                if table_text and channel_id in self.channel_states and interval in self.channel_states[channel_id]:
+                    print(f"📤 Updating message in channel {channel_id} interval {interval}s")
                     # Handle both old format (string) and new format (tuple)
                     if isinstance(table_text, tuple):
                         table_data, last_updated = table_text
@@ -317,55 +346,64 @@ class VWAPBot(commands.Bot):
                                     weight = weight_part
                                 break
 
+                    # Import interval formatter
+                    interval_str = format_interval(interval)
+
                     # Generate table image
-                    print(f"🎨 Generating table image for channel {channel_id}...")
-                    table_image = generate_table_image(table_data, session_name, weight, last_updated, TABLE_FOOTER_TEXT)
+                    print(f"🎨 Generating table image for channel {channel_id} interval {interval}s...")
+                    table_image = generate_table_image(table_data, session_name, weight, last_updated, TABLE_FOOTER_TEXT, interval_str)
 
                     # Create embed with image
                     embed = discord.Embed(
-                        title="BYBIT FUTURES VWAP SCANNER",
+                        title=f"BYBIT FUTURES VWAP SCANNER [{interval_str}]",
                         description=f"Session: {session_name} | Weight: {weight} | Last Updated: {last_updated}",
                         color=discord.Color.blue()
                     )
 
                     # Create file attachment
-                    filename = f"vwap_scanner_{datetime.utcnow().strftime('%H%M%S')}.png"
+                    filename = f"vwap_scanner_{interval}s_{datetime.utcnow().strftime('%H%M%S')}.png"
                     file = discord.File(table_image, filename=filename)
 
                     # Set image in embed
                     embed.set_image(url=f"attachment://{filename}")
 
                     # Calculate next update time
-                    next_update = datetime.now() + timedelta(seconds=REFRESH_INTERVAL)
+                    next_update = datetime.now() + timedelta(seconds=interval)
                     next_update_str = next_update.strftime('%H:%M:%S WIB')
 
                     # Add footer
                     embed.set_footer(text=f"Next update on {next_update_str}")
 
-                    message = self.channel_states[channel_id]['message']
+                    message = self.channel_states[channel_id][interval]['message']
                     await message.edit(embed=embed, attachments=[file])
-                    print(f"✅ Table image updated in channel {channel_id}")
-                elif channel_id in self.channel_states:
-                    print(f"⚠️ No data to update in channel {channel_id}")
+                    print(f"✅ Table image updated in channel {channel_id} interval {interval}s")
+                elif channel_id in self.channel_states and interval in self.channel_states[channel_id]:
+                    print(f"⚠️ No data to update in channel {channel_id} interval {interval}s")
 
             except discord.NotFound:
-                print(f"❌ Message not found in channel {channel_id}, stopping updates")
-                if channel_id in self.channel_states:
-                    self.channel_states[channel_id]['running'] = False
-                    del self.channel_states[channel_id]
+                print(f"❌ Message not found in channel {channel_id} interval {interval}s, stopping updates")
+                if channel_id in self.channel_states and interval in self.channel_states[channel_id]:
+                    self.channel_states[channel_id][interval]['running'] = False
+                    del self.channel_states[channel_id][interval]
+                    # Clean up empty channel entry
+                    if not self.channel_states[channel_id]:
+                        del self.channel_states[channel_id]
                 break
             except Exception as e:
-                print(f"❌ Error updating message in channel {channel_id}: {e}")
+                print(f"❌ Error updating message in channel {channel_id} interval {interval}s: {e}")
                 import traceback
                 traceback.print_exc()
-                if channel_id in self.channel_states:
-                    self.channel_states[channel_id]['running'] = False
-                    del self.channel_states[channel_id]
+                if channel_id in self.channel_states and interval in self.channel_states[channel_id]:
+                    self.channel_states[channel_id][interval]['running'] = False
+                    del self.channel_states[channel_id][interval]
+                    # Clean up empty channel entry
+                    if not self.channel_states[channel_id]:
+                        del self.channel_states[channel_id]
                 break
 
             # Wait before next update
-            print(f"⏰ Waiting {REFRESH_INTERVAL} seconds before next update...")
-            await asyncio.sleep(REFRESH_INTERVAL)
+            print(f"⏰ Waiting {interval} seconds before next update...")
+            await asyncio.sleep(interval)
 
     def set_update_callback(self, callback):
         """Set the callback function to get updated data"""
@@ -374,10 +412,11 @@ class VWAPBot(commands.Bot):
     async def close(self):
         """Cleanup when bot is shutting down"""
         # Cancel all running update tasks
-        for channel_id, state in self.channel_states.items():
-            if state['task'] and not state['task'].done():
-                state['task'].cancel()
-                print(f"🛑 Cancelled update task for channel {channel_id}")
+        for channel_id, intervals in self.channel_states.items():
+            for interval, state in intervals.items():
+                if state['task'] and not state['task'].done():
+                    state['task'].cancel()
+                    print(f"🛑 Cancelled update task for channel {channel_id} interval {interval}s")
 
         self.channel_states.clear()
         await super().close()
@@ -405,47 +444,64 @@ async def start_command(ctx):
     channel_id = ctx.channel.id
     print(f"📝 Start command - Channel ID: {channel_id}, Guild: {ctx.guild.name if ctx.guild else 'DM'} (ID: {ctx.guild.id if ctx.guild else 'N/A'})")
 
+    # Parse intervals from config
+    intervals = parse_intervals(REFRESH_INTERVAL)
+    print(f"📊 Parsed intervals: {intervals} ({', '.join(format_interval(i) for i in intervals)})")
+
     # Check if already running in this channel
-    if channel_id in bot.channel_states and bot.channel_states[channel_id]['running']:
-        print(f"⚠️ Scanner already running in channel {channel_id}")
-        await ctx.message.add_reaction("⚠️")
-        await ctx.send("🔄 VWAP scanner is already running in this channel!")
-        return
+    if channel_id in bot.channel_states:
+        existing_intervals = list(bot.channel_states[channel_id].keys())
+        if existing_intervals:
+            print(f"⚠️ Scanner already running in channel {channel_id} with intervals: {existing_intervals}")
+            await ctx.message.add_reaction("⚠️")
+            intervals_str = ', '.join(format_interval(i) for i in existing_intervals)
+            await ctx.send(f"🔄 VWAP scanner is already running in this channel!\nActive intervals: {intervals_str}")
+            return
 
     try:
-        print("📤 Sending initial message...")
-        # Send initial message
-        embed = discord.Embed(
-            title="VWAP Scanner",
-            description="Starting VWAP scanner...\nLoading data...",
-            color=discord.Color.blue()
-        )
-
-        # Send the initial message and get the message object
-        message = await ctx.send(embed=embed)
-        print(f"✅ Initial message sent, message ID: {message.id}")
-
         # React with checkmark to confirm command received
         await ctx.message.add_reaction("✅")
 
-        # Initialize channel state
-        bot.channel_states[channel_id] = {
-            'message': message,
-            'running': True,
-            'task': None
-        }
+        # Initialize channel state structure
+        if channel_id not in bot.channel_states:
+            bot.channel_states[channel_id] = {}
 
-        # Save state to database
         server_name = ctx.guild.name if ctx.guild else "DM"
         guild_id = ctx.guild.id if ctx.guild else None
-        save_channel_state(channel_id, message.id, True, server_name, ctx.channel.name, guild_id)
 
-        # Start the update loop for this channel
-        print(f"🔄 Starting update loop for channel {channel_id}")
-        task = asyncio.create_task(bot.update_loop_for_channel(channel_id))
-        bot.channel_states[channel_id]['task'] = task
+        # Create a message and start update loop for each interval
+        for interval in intervals:
+            interval_str = format_interval(interval)
+            print(f"📤 Creating message for interval {interval}s ({interval_str})...")
+            
+            # Send initial message
+            embed = discord.Embed(
+                title=f"VWAP Scanner [{interval_str}]",
+                description=f"Starting VWAP scanner with {interval_str} refresh interval...\nLoading data...",
+                color=discord.Color.blue()
+            )
 
-        print(f"✅ VWAP scanner started in channel: {ctx.channel.name} (ID: {channel_id})")
+            # Send the initial message and get the message object
+            message = await ctx.send(embed=embed)
+            print(f"✅ Initial message sent for {interval_str}, message ID: {message.id}")
+
+            # Initialize interval state
+            bot.channel_states[channel_id][interval] = {
+                'message': message,
+                'running': True,
+                'task': None
+            }
+
+            # Save state to database
+            save_channel_state(channel_id, interval, message.id, True, server_name, ctx.channel.name, guild_id)
+
+            # Start the update loop for this interval
+            print(f"🔄 Starting update loop for channel {channel_id} interval {interval}s")
+            task = asyncio.create_task(bot.update_loop_for_channel(channel_id, interval))
+            bot.channel_states[channel_id][interval]['task'] = task
+
+        intervals_str = ', '.join(format_interval(i) for i in intervals)
+        print(f"✅ VWAP scanner started in channel: {ctx.channel.name} (ID: {channel_id}) with {len(intervals)} interval(s): {intervals_str}")
 
     except Exception as e:
         print(f"❌ Error in start_command: {e}")
@@ -463,7 +519,7 @@ async def stop_command(ctx):
     print(f"📥 !stop command received from {ctx.author}")
     channel_id = ctx.channel.id
 
-    if channel_id not in bot.channel_states or not bot.channel_states[channel_id]['running']:
+    if channel_id not in bot.channel_states or not bot.channel_states[channel_id]:
         print(f"⚠️ No scanner running in channel {channel_id}")
         await ctx.message.add_reaction("⚠️")
         await ctx.send("❌ VWAP scanner is not running in this channel!")
@@ -471,35 +527,45 @@ async def stop_command(ctx):
 
     try:
         print(f"🛑 Stopping scanner in channel {channel_id}")
-        # Stop the scanner for this channel
-        bot.channel_states[channel_id]['running'] = False
+        
+        # Get list of intervals before we start modifying
+        intervals_to_stop = list(bot.channel_states[channel_id].keys())
+        
+        # Stop all intervals for this channel
+        for interval in intervals_to_stop:
+            interval_str = format_interval(interval)
+            print(f"🛑 Stopping interval {interval}s ({interval_str})")
+            
+            # Stop the scanner for this interval
+            bot.channel_states[channel_id][interval]['running'] = False
 
-        # Cancel the update task
-        if bot.channel_states[channel_id]['task']:
-            bot.channel_states[channel_id]['task'].cancel()
-            print("✅ Update task cancelled")
+            # Cancel the update task
+            if bot.channel_states[channel_id][interval]['task']:
+                bot.channel_states[channel_id][interval]['task'].cancel()
+                print(f"✅ Update task cancelled for {interval_str}")
+
+            # Edit the message to show stopped state without image
+            embed = discord.Embed(
+                title=f"VWAP Scanner [{interval_str}]",
+                description=f"VWAP scanner stopped",
+                color=discord.Color.red()
+            )
+
+            message = bot.channel_states[channel_id][interval]['message']
+            await message.edit(embed=embed, attachments=[])
+            print(f"✅ Message edited to stopped state for {interval_str}")
 
         # React with checkmark to confirm command received
         await ctx.message.add_reaction("✅")
 
-        # Edit the message to show stopped state without image
-        embed = discord.Embed(
-            title="VWAP Scanner",
-            description="VWAP scanner stopped",
-            color=discord.Color.red()
-        )
-
-        message = bot.channel_states[channel_id]['message']
-        await message.edit(embed=embed, attachments=[])
-        print("✅ Message edited to stopped state")
-
         # Clean up channel state
         del bot.channel_states[channel_id]
 
-        # Remove from database
+        # Remove from database (all intervals)
         remove_channel_state(channel_id)
 
-        print(f"⏹️ VWAP scanner stopped in channel: {ctx.channel.name} (ID: {channel_id})")
+        intervals_str = ', '.join(format_interval(i) for i in intervals_to_stop)
+        print(f"⏹️ VWAP scanner stopped in channel: {ctx.channel.name} (ID: {channel_id}) - {len(intervals_to_stop)} interval(s): {intervals_str}")
 
     except Exception as e:
         print(f"❌ Error in stop_command: {e}")
