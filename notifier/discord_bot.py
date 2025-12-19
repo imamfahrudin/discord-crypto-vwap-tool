@@ -473,6 +473,7 @@ async def stop_command(ctx):
             bot.channel_states[channel_id]['task'].cancel()
             print("✅ Update task cancelled")
 
+        # Edit the message to show stopped state without image
         embed = discord.Embed(
             title="VWAP Scanner",
             description="VWAP scanner stopped",
@@ -480,7 +481,11 @@ async def stop_command(ctx):
         )
 
         message = bot.channel_states[channel_id]['message']
-        await message.edit(embed=embed)
+        await message.edit(embed=embed, attachments=[])
+        print("✅ Message edited to stopped state")
+
+        # Also send a stopped message
+        await ctx.send(embed=embed)
         print("✅ Stop message sent")
 
         # Clean up channel state
@@ -488,8 +493,6 @@ async def stop_command(ctx):
 
         # Remove from database
         remove_channel_state(channel_id)
-
-        await ctx.send("✅ VWAP scanner stopped!")
 
         print(f"⏹️ VWAP scanner stopped in channel: {ctx.channel.name} (ID: {channel_id})")
 
