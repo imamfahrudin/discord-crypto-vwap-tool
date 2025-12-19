@@ -11,6 +11,17 @@ from typing import Optional
 from table_generator import generate_table_image
 from utils.interval_parser import parse_intervals, format_interval
 
+def get_session_flag(session_name: str) -> str:
+    """Get flag emoji for trading session"""
+    flags = {
+        'ASIAN': '🌏',
+        'LONDON': '🇬🇧',
+        'NEW_YORK': '🇺🇸',
+        'EUROPE': '🇪🇺',
+        'ASIA': '🌏'
+    }
+    return flags.get(session_name.upper(), '')
+
 # Database setup
 DB_PATH = '/app/data/bot_states.db' if os.path.exists('/app') else 'bot_states.db'
 
@@ -358,9 +369,12 @@ class VWAPBot(commands.Bot):
                     table_image = generate_table_image(table_data, session_name, weight, last_updated, TABLE_FOOTER_TEXT, interval_str, next_update_str)
 
                     # Create embed with image
+                    # Get flag emoji for session
+                    session_flag = get_session_flag(session_name)
+                    
                     embed = discord.Embed(
                         title=f"BYBIT FUTURES VWAP SCANNER - UPDATED EVERY {interval_str.upper()}",
-                        description=f"Current Session: {session_name} | Weight: {weight} | Last Updated: {last_updated} | Next Update: {next_update_str}",
+                        description=f"**Current Session:** {session_name} {session_flag}\n**Weight:** {weight}\n**Last Updated:** {last_updated}\n**Next Update:** {next_update_str}",
                         color=discord.Color.blue()
                     )
 
