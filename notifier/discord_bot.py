@@ -30,20 +30,42 @@ def get_session_flag(session_name: str) -> str:
 def get_next_session_info() -> tuple[str, str]:
     """Get the next trading session name and start time"""
     now = datetime.now(timezone.utc)
-    current_hour = now.hour
     
-    if current_hour < 8:
-        # Currently ASIAN, next is LONDON at 08:00 UTC
-        next_session = "LONDON"
-        next_time = now.replace(hour=8, minute=0, second=0, microsecond=0)
-    elif current_hour < 16:
-        # Currently LONDON, next is NEW_YORK at 16:00 UTC
-        next_session = "NEW_YORK"
-        next_time = now.replace(hour=16, minute=0, second=0, microsecond=0)
-    else:
-        # Currently NEW_YORK, next is ASIAN at 00:00 UTC (tomorrow)
-        next_session = "ASIAN"
-        next_time = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+    # Session order: Sydney -> Tokyo -> London -> New York -> Sydney (next day)
+    sessions_order = ["Sydney", "Tokyo", "London", "New York"]
+    
+    # Find current session index
+    current_session, _ = detect_session()
+    try:
+        current_index = sessions_order.index(current_session)
+        next_index = (current_index + 1) % len(sessions_order)
+        next_session = sessions_order[next_index]
+    except ValueError:
+        # Fallback if current session not found
+        next_session = "London"
+    
+    # Calculate approximate next session start time (this is simplified)
+    # In production, you'd want more accurate timezone-aware calculation
+    if next_session == "Sydney":
+        # Sydney typically starts around 23:00 UTC
+        next_time = now.replace(hour=23, minute=0, second=0, microsecond=0)
+        if now.hour >= 23:
+            next_time += timedelta(days=1)
+    elif next_session == "Tokyo":
+        # Tokyo typically starts around 00:00 UTC
+        next_time = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        if now.hour >= 0:
+            next_time += timedelta(days=1)
+    elif next_session == "London":
+        # London typically starts around 07:00 UTC
+        next_time = now.replace(hour=7, minute=0, second=0, microsecond=0)
+        if now.hour >= 7:
+            next_time += timedelta(days=1)
+    else:  # New York
+        # New York typically starts around 13:00 UTC
+        next_time = now.replace(hour=13, minute=0, second=0, microsecond=0)
+        if now.hour >= 13:
+            next_time += timedelta(days=1)
     
     # Format time as WIB (UTC+7)
     next_time_wib = next_time + timedelta(hours=7)
