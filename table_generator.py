@@ -39,7 +39,7 @@ def generate_table_image(table_data: str, session_name: str = "UNKNOWN", weight:
     ax.axis('off')
 
     # Create table
-    table = Table(ax, bbox=[0.05, 0.12, 0.9, 0.78])
+    table = Table(ax, bbox=[0.05, 0.10, 0.9, 0.78])
 
     # Set table style
     table.auto_set_font_size(False)
