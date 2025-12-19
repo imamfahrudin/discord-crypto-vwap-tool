@@ -15,13 +15,12 @@ from sessions.session_manager import detect_session
 def get_session_flag(session_name: str) -> str:
     """Get flag emoji for trading session"""
     flags = {
-        'Sydney': '🇦🇺',
-        'Tokyo': '🇯🇵',
-        'London': '🇬🇧',
-        'New York': '🇺🇸',
-        'ASIAN': '🌏',
+        'SYDNEY': '🇦🇺',
+        'TOKYO': '🇯🇵',
         'LONDON': '🇬🇧',
-        'NEW_YORK': '🇺🇸',
+        'NEW YORK': '🇺🇸',  # Space, not underscore
+        'NEW_YORK': '🇺🇸',  # Underscore for backward compatibility
+        'ASIAN': '🌏',
         'EUROPE': '🇪🇺',
         'ASIA': '🌏'
     }
