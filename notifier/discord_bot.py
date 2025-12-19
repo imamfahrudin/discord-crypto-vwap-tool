@@ -151,6 +151,11 @@ class VWAPBot(commands.Bot):
                     remove_channel_state(channel_id)
                     continue
 
+                # Check if this channel is already running (maybe from a manual !start command)
+                if channel_id in self.channel_states and self.channel_states[channel_id]['running']:
+                    print(f"ℹ️ Channel {channel_id} already running, skipping restoration")
+                    continue
+
                 # Restore the state
                 self.channel_states[channel_id] = {
                     'message': message,
