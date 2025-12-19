@@ -206,13 +206,90 @@ class VWAPBot(commands.Bot):
                         wib_time = datetime.now()
                         utc_time = datetime.utcnow()
                         last_updated = f"{wib_time.strftime('%H:%M:%S')} WIB | {utc_time.strftime('%H:%M:%S')} UTC"
-                    
+
+                    # Create rich embed instead of plain text table
                     embed = discord.Embed(
-                        title="📊 VWAP Scanner",
-                        description=f"```\n{table_data}\n```",
-                        color=discord.Color.green()
+                        title="📊 BYBIT FUTURES VWAP SCANNER",
+                        color=discord.Color.blue()
                     )
-                    embed.set_footer(text=f"Last updated: {last_updated} • Updates every {REFRESH_INTERVAL}s • Use !stop to end")
+
+                    # Parse session info from table_data
+                    session_name = "UNKNOWN"
+                    weight = "0.0"
+                    if isinstance(table_data, str):
+                        lines = table_data.split('\n')
+                        for line in lines:
+                            if line.startswith('Session :'):
+                                # Extract session and weight from "Session : ASIAN | Weight : 0.7"
+                                parts = line.replace('Session : ', '').split(' | ')
+                                if len(parts) >= 2:
+                                    session_name = parts[0].strip()
+                                    weight_part = parts[1].replace('Weight : ', '').strip()
+                                    weight = weight_part
+                                break
+
+                    # Add session info as author
+                    embed.set_author(
+                        name=f"Session: {session_name} | Weight: {weight}"
+                    )
+
+                    # Parse the table data to extract individual rows
+                    if isinstance(table_data, str) and "RANK" in table_data:
+                        lines = table_data.split('\n')
+                        data_lines = [line for line in lines if line.strip() and not line.startswith('=') and not line.startswith('-') and 'RANK' not in line and 'BYBIT' not in line and 'Session' not in line]
+
+                        # Add top 10 symbols as fields (Discord embed limit is 25 fields, but keep it clean)
+                        for i, line in enumerate(data_lines[:10]):
+                            if line.strip():
+                                parts = line.split()
+                                if len(parts) >= 10:
+                                    rank = parts[0]
+                                    symbol = parts[1]
+                                    signal_parts = []
+                                    score_idx = -1
+
+                                    # Find signal (contains emojis and text)
+                                    for j, part in enumerate(parts[2:], 2):
+                                        if part.replace('.', '').replace('-', '').isdigit():
+                                            score_idx = j
+                                            break
+                                        signal_parts.append(part)
+
+                                    signal = ' '.join(signal_parts)
+                                    score = parts[score_idx] if score_idx > 0 else "N/A"
+                                    price = parts[score_idx + 1] if score_idx + 1 < len(parts) else "N/A"
+                                    vwap = parts[score_idx + 2] if score_idx + 2 < len(parts) else "N/A"
+                                    volume = parts[score_idx + 3] if score_idx + 3 < len(parts) else "N/A"
+                                    rsi = parts[score_idx + 4] if score_idx + 4 < len(parts) else "N/A"
+                                    macd = parts[score_idx + 5] if score_idx + 5 < len(parts) else "N/A"
+                                    stoch = parts[score_idx + 6] if score_idx + 6 < len(parts) else "N/A"
+
+                                    # Determine color based on signal
+                                    if "STRONG BUY" in signal:
+                                        field_color = "🟢🔥"
+                                    elif "BUY" in signal:
+                                        field_color = "🟢"
+                                    elif "STRONG SELL" in signal:
+                                        field_color = "🔴🔥"
+                                    elif "SELL" in signal:
+                                        field_color = "🔴"
+                                    else:
+                                        field_color = "⚪"
+
+                                    # Create field value with formatted data
+                                    field_value = f"**Signal:** {field_color} {signal}\n"
+                                    field_value += f"**Score:** {score} | **Price:** {price}\n"
+                                    field_value += f"**VWAP:** {vwap} | **Vol:** {volume}M\n"
+                                    field_value += f"**RSI:** {rsi} | **MACD:** {macd} | **Stoch:** {stoch}"
+
+                                    embed.add_field(
+                                        name=f"#{rank} {symbol}",
+                                        value=field_value,
+                                        inline=True
+                                    )
+
+                    # Add timestamp and refresh info
+                    embed.set_footer(text=f"🔄 Updates every {REFRESH_INTERVAL}s | 📅 {last_updated} | Use !stop to end scanning")
 
                     message = self.channel_states[channel_id]['message']
                     await message.edit(embed=embed)
