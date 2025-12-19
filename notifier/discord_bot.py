@@ -33,28 +33,39 @@ class VWAPBot(discord.Client):
             await interaction.response.send_message("🔄 VWAP scanner is already running in this channel!", ephemeral=True)
             return
 
-        # Send initial message
-        embed = discord.Embed(
-            title="📊 VWAP Scanner",
-            description="🔄 Starting VWAP scanner...",
-            color=discord.Color.blue()
-        )
+        # Defer the interaction to give us more time
+        await interaction.response.defer()
 
-        await interaction.response.send_message(embed=embed)
-        message = await interaction.original_response()
+        try:
+            # Send initial message
+            embed = discord.Embed(
+                title="📊 VWAP Scanner",
+                description="🔄 Starting VWAP scanner...",
+                color=discord.Color.blue()
+            )
 
-        # Initialize channel state
-        self.channel_states[channel_id] = {
-            'message': message,
-            'running': True,
-            'task': None
-        }
+            # Send the initial message and get the message object
+            message = await interaction.followup.send(embed=embed, wait=True)
 
-        # Start the update loop for this channel
-        task = asyncio.create_task(self.update_loop_for_channel(channel_id))
-        self.channel_states[channel_id]['task'] = task
+            # Initialize channel state
+            self.channel_states[channel_id] = {
+                'message': message,
+                'running': True,
+                'task': None
+            }
 
-        print(f"✅ VWAP scanner started in channel: {interaction.channel.name} (ID: {channel_id})")
+            # Start the update loop for this channel
+            task = asyncio.create_task(self.update_loop_for_channel(channel_id))
+            self.channel_states[channel_id]['task'] = task
+
+            print(f"✅ VWAP scanner started in channel: {interaction.channel.name} (ID: {channel_id})")
+
+        except Exception as e:
+            print(f"❌ Error in start_command: {e}")
+            try:
+                await interaction.followup.send(f"❌ Error starting scanner: {str(e)[:100]}", ephemeral=True)
+            except Exception as followup_error:
+                print(f"❌ Failed to send error message: {followup_error}")
 
     @app_commands.command(name="stop", description="Stop VWAP scanner")
     async def stop_command(self, interaction: discord.Interaction):
@@ -64,30 +75,41 @@ class VWAPBot(discord.Client):
             await interaction.response.send_message("❌ VWAP scanner is not running in this channel!", ephemeral=True)
             return
 
-        # Stop the scanner for this channel
-        self.channel_states[channel_id]['running'] = False
+        # Defer the interaction
+        await interaction.response.defer()
 
-        # Cancel the update task
-        if self.channel_states[channel_id]['task']:
-            self.channel_states[channel_id]['task'].cancel()
-
-        embed = discord.Embed(
-            title="📊 VWAP Scanner",
-            description="⏹️ VWAP scanner stopped",
-            color=discord.Color.red()
-        )
-
-        message = self.channel_states[channel_id]['message']
         try:
-            await message.edit(embed=embed)
-        except discord.NotFound:
-            await interaction.response.send_message(embed=embed)
+            # Stop the scanner for this channel
+            self.channel_states[channel_id]['running'] = False
 
-        # Clean up channel state
-        del self.channel_states[channel_id]
+            # Cancel the update task
+            if self.channel_states[channel_id]['task']:
+                self.channel_states[channel_id]['task'].cancel()
 
-        await interaction.response.send_message("✅ VWAP scanner stopped!", ephemeral=True)
-        print(f"⏹️ VWAP scanner stopped in channel: {interaction.channel.name} (ID: {channel_id})")
+            embed = discord.Embed(
+                title="📊 VWAP Scanner",
+                description="⏹️ VWAP scanner stopped",
+                color=discord.Color.red()
+            )
+
+            message = self.channel_states[channel_id]['message']
+            try:
+                await message.edit(embed=embed)
+            except discord.NotFound:
+                await interaction.followup.send(embed=embed)
+
+            # Clean up channel state
+            del self.channel_states[channel_id]
+
+            await interaction.followup.send("✅ VWAP scanner stopped!", ephemeral=True)
+            print(f"⏹️ VWAP scanner stopped in channel: {interaction.channel.name} (ID: {channel_id})")
+
+        except Exception as e:
+            print(f"❌ Error in stop_command: {e}")
+            try:
+                await interaction.followup.send(f"❌ Error stopping scanner: {str(e)[:100]}", ephemeral=True)
+            except Exception as followup_error:
+                print(f"❌ Failed to send error message: {followup_error}")
 
     async def update_loop_for_channel(self, channel_id):
         """Update loop for a specific channel"""
