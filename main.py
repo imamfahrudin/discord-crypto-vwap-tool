@@ -1,6 +1,7 @@
 import asyncio
 import aiohttp
 from datetime import datetime, timedelta, timezone
+import logging
 
 from bybit.rest import get_futures_symbols, get_session_candles
 from bybit.websocket import start_ws, prices
@@ -24,6 +25,21 @@ from config import (
 )
 from utils.interval_parser import parse_intervals
 
+# Set up custom logging with file details
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# Create console handler
+handler = logging.StreamHandler()
+handler.setLevel(logging.INFO)
+
+# Create formatter with file details in brackets
+formatter = logging.Formatter('[%(filename)s:%(lineno)d] %(levelname)s: %(message)s')
+handler.setFormatter(formatter)
+
+# Add handler to logger
+logger.addHandler(handler)
+
 # Global cache for scanner data
 scanner_cache = {
     'data': None,
@@ -41,20 +57,20 @@ async def update_scanner_cache():
     
     scanner_cache['updating'] = True
     try:
-        print("🔄 Updating scanner cache...")
+        logger.info("🔄 Updating scanner cache...")
         data = await get_scanner_data_raw()
         scanner_cache['data'] = data
         scanner_cache['last_updated'] = asyncio.get_event_loop().time()
-        print("✅ Scanner cache updated")
+        logger.info("✅ Scanner cache updated")
     except Exception as e:
-        print(f"❌ Failed to update scanner cache: {e}")
+        logger.error(f"❌ Failed to update scanner cache: {e}")
     finally:
         scanner_cache['updating'] = False
 
 async def get_scanner_data_raw():
     """Raw scanner data computation (heavy lifting)"""
     symbols = (await get_futures_symbols())[:MAX_SYMBOLS]
-    print(f"📊 Fetched {len(symbols)} symbols, WebSocket prices available: {len(prices)}")
+    logger.info(f"📊 Fetched {len(symbols)} symbols, WebSocket prices available: {len(prices)}")
 
     session_name, weight = detect_session()
     
@@ -83,10 +99,10 @@ async def get_scanner_data_raw():
             prev_session_start = int((now - timedelta(days=1)).replace(hour=13, minute=0, second=0, microsecond=0).timestamp() * 1000)
         
         start_ts = prev_session_start
-        print(f"📊 Session: {session_name}, Weight: {weight}, Using current + previous session data (hours elapsed: {hours_elapsed:.1f})")
+        logger.info(f"📊 Session: {session_name}, Weight: {weight}, Using current + previous session data (hours elapsed: {hours_elapsed:.1f})")
     else:
         start_ts = current_session_start
-        print(f"📊 Session: {session_name}, Weight: {weight}, Using current session data (hours elapsed: {hours_elapsed:.1f})")
+        logger.info(f"📊 Session: {session_name}, Weight: {weight}, Using current session data (hours elapsed: {hours_elapsed:.1f})")
 
     # Create a new session for this request
     async with aiohttp.ClientSession() as session:
@@ -150,8 +166,8 @@ async def get_scanner_data_raw():
                 "stoch": stochastic(highs, lows, closes),
             })
 
-        print(f"📊 Filtered by candles: {filtered_by_candles}, by volume: {filtered_by_volume}")
-        print(f"📊 Final market data: {len(market)} symbols")
+        logger.info(f"📊 Filtered by candles: {filtered_by_candles}, by volume: {filtered_by_volume}")
+        logger.info(f"📊 Final market data: {len(market)} symbols")
 
         # ============================
         # SCAN & RANK
@@ -170,7 +186,7 @@ async def get_scanner_data():
     cache_fresh = scanner_cache['data'] and (current_time - scanner_cache['last_updated']) < 30
     
     if not force_fresh_data and cache_fresh:
-        print("✅ Using cached scanner data")
+        logger.info("✅ Using cached scanner data")
         # Format timestamp in both WIB and UTC like the bot expects
         # Since container is in WIB timezone, datetime.now() gives WIB time
         cached_wib_time = datetime.now()
@@ -179,7 +195,7 @@ async def get_scanner_data():
         return scanner_cache['data'], last_updated
     
     # Cache is stale or fresh data is forced, update it
-    print("🔄 Forcing fresh scanner data update (startup or cache stale)" if force_fresh_data else "🔄 Cache stale, updating scanner data")
+    logger.info("🔄 Forcing fresh scanner data update (startup or cache stale)" if force_fresh_data else "🔄 Cache stale, updating scanner data")
     await update_scanner_cache()
     force_fresh_data = False  # Reset flag after first update
     
@@ -200,9 +216,9 @@ async def main():
     # Set up bot callback FIRST
     bot.set_update_callback(get_scanner_data)
 
-    print("🤖 VWAP Scanner Discord Bot v2.0 - CACHED EDITION")
-    print("Use !start in Discord to begin scanning")
-    print("Use !stop to stop scanning")
+    logger.info("🤖 VWAP Scanner Discord Bot v2.0 - CACHED EDITION")
+    logger.info("Use !start in Discord to begin scanning")
+    logger.info("Use !stop to stop scanning")
 
     # Start background cache updater
     cache_task = asyncio.create_task(cache_updater())
@@ -217,7 +233,7 @@ async def main():
     symbols = (await get_futures_symbols())[:MAX_SYMBOLS]
     start_ws(symbols)
 
-    print("✅ WebSocket connection started")
+    logger.info("✅ WebSocket connection started")
 
     # Wait for bot task (this will run forever)
     await bot_task
@@ -227,14 +243,14 @@ async def cache_updater():
     # Parse intervals and use the minimum interval for cache updates
     intervals = parse_intervals(REFRESH_INTERVAL)
     min_interval = min(intervals)
-    print(f"📊 Cache updater using minimum interval: {min_interval}s from {intervals}")
+    logger.info(f"📊 Cache updater using minimum interval: {min_interval}s from {intervals}")
     
     while True:
         try:
             await update_scanner_cache()
             await asyncio.sleep(min_interval)  # Update every minimum refresh interval
         except Exception as e:
-            print(f"❌ Cache updater error: {e}")
+            logger.error(f"Cache updater error: {e}")
             await asyncio.sleep(10)  # Retry in 10 seconds on error
 
 

@@ -5,10 +5,26 @@ Test script for table_generator.py
 
 import sys
 import os
+import logging
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from table_generator import generate_table_image
 from datetime import datetime
+
+# Set up custom logging with file details
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# Create console handler
+handler = logging.StreamHandler()
+handler.setLevel(logging.INFO)
+
+# Create formatter with file details in brackets
+formatter = logging.Formatter('[%(filename)s:%(lineno)d] %(levelname)s: %(message)s')
+handler.setFormatter(formatter)
+
+# Add handler to logger
+logger.addHandler(handler)
 
 def test_rank_changes():
     """Test rank change functionality with simulated data changes"""
@@ -30,7 +46,7 @@ RANK SYMBOL         SIGNAL          SCORE   PRICE   VWAP    VOLUME  RSI     MACD
 ================================================================================
 """
 
-    print("Testing rank changes - First run (LONDON session)...")
+    logger.info("Testing rank changes - First run (LONDON session)...")
 
     # Generate first table
     image_buffer1 = generate_table_image(
@@ -61,7 +77,7 @@ RANK SYMBOL         SIGNAL          SCORE   PRICE   VWAP    VOLUME  RSI     MACD
 ================================================================================
 """
 
-    print("Testing rank changes - Second run (LONDON session)...")
+    logger.info("Testing rank changes - Second run (LONDON session)...")
 
     # Generate second table with rank changes
     image_buffer2 = generate_table_image(
@@ -75,9 +91,9 @@ RANK SYMBOL         SIGNAL          SCORE   PRICE   VWAP    VOLUME  RSI     MACD
     with open("test_rank_change_2.png", 'wb') as f:
         f.write(image_buffer2.getvalue())
 
-    print("✅ Rank change test completed!")
-    print("📁 Check test_rank_change_1.png and test_rank_change_2.png")
-    print("   BTC should show ▼1 (moved down), ETH should show ▲1 (moved up)")
+    logger.info("✅ Rank change test completed!")
+    logger.info("📁 Check test_rank_change_1.png and test_rank_change_2.png")
+    logger.info("   BTC should show ▼1 (moved down), ETH should show ▲1 (moved up)")
 
 if __name__ == "__main__":
     test_rank_changes()

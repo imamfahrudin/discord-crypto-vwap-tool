@@ -1,4 +1,20 @@
 # output/table.py
+import logging
+
+# Set up custom logging with file details
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# Create console handler
+handler = logging.StreamHandler()
+handler.setLevel(logging.INFO)
+
+# Create formatter with file details in brackets
+formatter = logging.Formatter('[%(filename)s:%(lineno)d] %(levelname)s: %(message)s')
+handler.setFormatter(formatter)
+
+# Add handler to logger
+logger.addHandler(handler)
 
 def signal_icon(signal):
     return {
@@ -31,5 +47,5 @@ def render_table(rows, session, weight):
     lines.append("=" * 150)
 
     table_text = "\n".join(lines)
-    print(table_text)      # Terminal
+    logger.info(table_text)      # Terminal
     return table_text      # Discord

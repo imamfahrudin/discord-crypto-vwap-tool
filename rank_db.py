@@ -5,9 +5,25 @@ Separated to avoid circular imports
 
 import sqlite3
 import os
+import logging
 
 # Database setup
 DB_PATH = '/app/data/bot_states.db' if os.path.exists('/app') else 'bot_states.db'
+
+# Set up custom logging with file details
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# Create console handler
+handler = logging.StreamHandler()
+handler.setLevel(logging.INFO)
+
+# Create formatter with file details in brackets
+formatter = logging.Formatter('[%(filename)s:%(lineno)d] %(levelname)s: %(message)s')
+handler.setFormatter(formatter)
+
+# Add handler to logger
+logger.addHandler(handler)
 
 def init_rankings_table():
     """Initialize the rankings table if it doesn't exist, or migrate if needed"""
@@ -36,11 +52,11 @@ def init_rankings_table():
         
         if table_sql and 'UNIQUE(session_name, interval, symbol)' in table_sql[0]:
             # Old schema without scan_time in UNIQUE - needs migration
-            print("🔄 Migrating previous_rankings table to fix UNIQUE constraint...")
+            logger.info("🔄 Migrating previous_rankings table to fix UNIQUE constraint...")
             needs_schema_fix = True
         
         if 'interval' not in column_names:
-            print("🔄 Migrating previous_rankings table to add interval column...")
+            logger.info("🔄 Migrating previous_rankings table to add interval column...")
             
             # Get existing data
             cursor.execute('SELECT id, session_name, symbol, rank, scan_time FROM previous_rankings')
@@ -74,10 +90,10 @@ def init_rankings_table():
                 except sqlite3.IntegrityError:
                     pass
             
-            print(f"✅ Migrated {len(old_data)} ranking records to new schema")
+            logger.info(f"✅ Migrated {len(old_data)} ranking records to new schema")
         elif needs_schema_fix:
             # Has interval column but wrong UNIQUE constraint
-            print("🔄 Fixing UNIQUE constraint to include scan_time...")
+            logger.info("🔄 Fixing UNIQUE constraint to include scan_time...")
             
             # Get existing data
             cursor.execute('SELECT session_name, interval, symbol, rank, scan_time FROM previous_rankings')
@@ -110,7 +126,7 @@ def init_rankings_table():
                 except sqlite3.IntegrityError:
                     pass
             
-            print(f"✅ Migrated {len(old_data)} ranking records with fixed schema")
+            logger.info(f"✅ Migrated {len(old_data)} ranking records with fixed schema")
     else:
         # Create new table with interval support
         cursor.execute('''

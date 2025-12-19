@@ -5,18 +5,34 @@ This script migrates the old single-interval database schema to the new multi-in
 
 import sqlite3
 import os
+import logging
 
 # Database path
 DB_PATH = '/app/data/bot_states.db' if os.path.exists('/app') else 'bot_states.db'
+
+# Set up custom logging with file details
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# Create console handler
+handler = logging.StreamHandler()
+handler.setLevel(logging.INFO)
+
+# Create formatter with file details in brackets
+formatter = logging.Formatter('[%(filename)s:%(lineno)d] %(levelname)s: %(message)s')
+handler.setFormatter(formatter)
+
+# Add handler to logger
+logger.addHandler(handler)
 
 def migrate_database():
     """Migrate database from single-interval to multi-interval schema"""
     
     if not os.path.exists(DB_PATH):
-        print("ℹ️ No existing database found, skipping migration")
+        logger.info("ℹ️ No existing database found, skipping migration")
         return
     
-    print("🔄 Starting database migration...")
+    logger.info("🔄 Starting database migration...")
     
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -29,13 +45,13 @@ def migrate_database():
         
         # Check if 'interval' column exists
         if 'interval' not in column_names:
-            print("📊 Old schema detected, performing migration...")
+            logger.info("📊 Old schema detected, performing migration...")
             
             # Get existing data from old table
             cursor.execute('SELECT channel_id, message_id, guild_id, running, server_name, channel_name FROM channel_states WHERE running = 1')
             old_data = cursor.fetchall()
             
-            print(f"📦 Found {len(old_data)} existing channel states")
+            logger.info(f"📦 Found {len(old_data)} existing channel states")
             
             # Rename old table
             cursor.execute('ALTER TABLE channel_states RENAME TO channel_states_old')
@@ -65,18 +81,18 @@ def migrate_database():
                     (channel_id, interval, message_id, guild_id, running, server_name, channel_name, created_at, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 ''', (channel_id, DEFAULT_INTERVAL, message_id, guild_id, running, server_name, channel_name))
-                print(f"✅ Migrated channel {channel_id} with default interval {DEFAULT_INTERVAL}s")
+                logger.info(f"✅ Migrated channel {channel_id} with default interval {DEFAULT_INTERVAL}s")
             
             # Drop old table
             cursor.execute('DROP TABLE channel_states_old')
             
             conn.commit()
-            print(f"✅ Migration complete! Migrated {len(old_data)} channel states")
+            logger.info(f"✅ Migration complete! Migrated {len(old_data)} channel states")
         else:
-            print("ℹ️ Database already using new schema, no migration needed")
+            logger.info("ℹ️ Database already using new schema, no migration needed")
     
     except Exception as e:
-        print(f"❌ Migration failed: {e}")
+        logger.error(f"❌ Migration failed: {e}")
         conn.rollback()
         raise
     finally:

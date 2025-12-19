@@ -6,11 +6,27 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 import sqlite3
 import os
+import logging
 from config import DISCORD_BOT_TOKEN, REFRESH_INTERVAL, TABLE_FOOTER_TEXT, EMBED_FOOTER_TEXT
 from typing import Optional
 from table_generator import generate_table_image
 from utils.interval_parser import parse_intervals, format_interval
 from sessions.session_manager import detect_session
+
+# Set up custom logging with file details
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# Create console handler
+handler = logging.StreamHandler()
+handler.setLevel(logging.INFO)
+
+# Create formatter with file details in brackets
+formatter = logging.Formatter('[%(filename)s:%(lineno)d] %(levelname)s: %(message)s')
+handler.setFormatter(formatter)
+
+# Add handler to logger
+logger.addHandler(handler)
 
 def get_session_flag(session_name: str) -> str:
     """Get flag emoji for trading session"""
@@ -121,7 +137,7 @@ def init_database():
         column_names = [col[1] for col in columns]
 
         if 'id' not in column_names and 'updated_at' in column_names:
-            print("🔄 Migrating previous_rankings table structure...")
+            logger.info("🔄 Migrating previous_rankings table structure...")
             # Create new table with proper structure
             cursor.execute('''
                 CREATE TABLE previous_rankings_new (
@@ -143,9 +159,9 @@ def init_database():
             # Replace old table
             cursor.execute('DROP TABLE previous_rankings')
             cursor.execute('ALTER TABLE previous_rankings_new RENAME TO previous_rankings')
-            print("✅ Successfully migrated previous_rankings table")
+            logger.info("✅ Successfully migrated previous_rankings table")
         elif 'id' not in column_names:
-            print("🔄 Creating new previous_rankings table structure...")
+            logger.info("🔄 Creating new previous_rankings table structure...")
             # Drop old table and create new one
             cursor.execute('DROP TABLE previous_rankings')
 
@@ -159,21 +175,21 @@ def init_database():
                     UNIQUE(session_name, symbol, scan_time)
                 )
             ''')
-            print("✅ Created new previous_rankings table")
+            logger.info("✅ Created new previous_rankings table")
     except Exception as e:
-        print(f"⚠️ Table migration check failed (probably normal): {e}")
+        logger.warning(f"⚠️ Table migration check failed (probably normal): {e}")
 
     # Add guild_id column if it doesn't exist (migration)
     try:
         cursor.execute("ALTER TABLE channel_states ADD COLUMN guild_id INTEGER")
-        print("✅ Added guild_id column to existing database")
+        logger.info("✅ Added guild_id column to existing database")
     except sqlite3.OperationalError:
         # Column already exists
         pass
 
     conn.commit()
     conn.close()
-    print("✅ Database initialized")
+    logger.info("✅ Database initialized")
 
 def save_channel_state(channel_id, interval, message_id, running, server_name=None, channel_name=None, guild_id=None):
     """Save or update channel state in database"""
@@ -282,30 +298,30 @@ class VWAPBot(commands.Bot):
     async def setup_hook(self):
         """Setup slash commands"""
         # Note: Using traditional commands instead of slash commands for reliability
-        print("✅ Bot setup complete (using traditional commands)")
+        logger.info("✅ Bot setup complete (using traditional commands)")
 
         # Initialize database
         init_database()
         
         # Start session change monitoring
         self.session_check_task = asyncio.create_task(self.monitor_session_changes())
-        print("✅ Session change monitoring started")
+        logger.info("✅ Session change monitoring started")
 
     async def restore_channel_states(self):
         """Restore channel states from database and resume scanning"""
         saved_states = load_channel_states()
 
         if not saved_states:
-            print("ℹ️ No previous channel states to restore")
+            logger.info("ℹ️ No previous channel states to restore")
             return
 
         total_states = sum(len(intervals) for intervals in saved_states.values())
-        print(f"🔄 Restoring {total_states} interval states across {len(saved_states)} channels from database...")
+        logger.info(f"🔄 Restoring {total_states} interval states across {len(saved_states)} channels from database...")
 
         for channel_id, intervals_data in saved_states.items():
             for interval, state_data in intervals_data.items():
                 try:
-                    print(f"🔍 Attempting to restore channel {channel_id}, interval {interval}s (guild: {state_data.get('guild_id')}, server: {state_data.get('server_name')})")
+                    logger.info(f"🔍 Attempting to restore channel {channel_id}, interval {interval}s (guild: {state_data.get('guild_id')}, server: {state_data.get('server_name')})")
                     
                     # Get the channel object - try multiple methods
                     channel = None
@@ -318,11 +334,11 @@ class VWAPBot(commands.Bot):
                         guild = self.get_guild(state_data['guild_id'])
                         if guild:
                             channel = guild.get_channel(channel_id)
-                            print(f"✅ Found channel via guild lookup: {guild.name}")
+                            logger.info(f"✅ Found channel via guild lookup: {guild.name}")
                     
                     if not channel:
-                        print(f"⚠️ Could not find channel {channel_id} (guild: {state_data.get('guild_id')}), removing from database")
-                        print(f"   Available guilds: {[g.name for g in self.guilds]}")
+                        logger.warning(f"⚠️ Could not find channel {channel_id} (guild: {state_data.get('guild_id')}), removing from database")
+                        logger.warning(f"   Available guilds: {[g.name for g in self.guilds]}")
                         remove_channel_state(channel_id, interval)
                         continue
 
@@ -330,7 +346,7 @@ class VWAPBot(commands.Bot):
                     try:
                         message = await channel.fetch_message(state_data['message_id'])
                     except discord.NotFound:
-                        print(f"⚠️ Message {state_data['message_id']} not found in channel {channel_id}, skipping")
+                        logger.warning(f"⚠️ Message {state_data['message_id']} not found in channel {channel_id}, skipping")
                         remove_channel_state(channel_id, interval)
                         continue
 
@@ -338,7 +354,7 @@ class VWAPBot(commands.Bot):
                     if (channel_id in self.channel_states and 
                         interval in self.channel_states[channel_id] and 
                         self.channel_states[channel_id][interval]['running']):
-                        print(f"ℹ️ Channel {channel_id} interval {interval}s already running, skipping restoration")
+                        logger.info(f"ℹ️ Channel {channel_id} interval {interval}s already running, skipping restoration")
                         continue
 
                     # Initialize channel_states structure if needed
@@ -358,21 +374,21 @@ class VWAPBot(commands.Bot):
                     task = asyncio.create_task(self.update_loop_for_channel(channel_id, interval))
                     self.channel_states[channel_id][interval]['task'] = task
 
-                    print(f"✅ Restored scanner in {state_data.get('channel_name', f'channel {channel_id}')} [{interval}s] - resuming updates")
-                    print(f"🔄 Update loop resumed for channel {channel_id} interval {interval}s - immediate update triggered")
+                    logger.info(f"✅ Restored scanner in {state_data.get('channel_name', f'channel {channel_id}')} [{interval}s] - resuming updates")
+                    logger.info(f"🔄 Update loop resumed for channel {channel_id} interval {interval}s - immediate update triggered")
                     
                     # Give a small delay to ensure the update loop starts and performs immediate update
                     await asyncio.sleep(0.1)
 
                 except Exception as e:
-                    print(f"❌ Failed to restore state for channel {channel_id} interval {interval}s: {e}")
+                    logger.error(f"❌ Failed to restore state for channel {channel_id} interval {interval}s: {e}")
                     remove_channel_state(channel_id, interval)
 
-        print("✅ Channel state restoration complete")
+        logger.info("✅ Channel state restoration complete")
 
     async def update_loop_for_channel(self, channel_id, interval):
         """Update loop for a specific channel and interval"""
-        print(f"🔄 Update loop started for channel {channel_id} interval {interval}s")
+        logger.info(f"🔄 Update loop started for channel {channel_id} interval {interval}s")
         first_update = True
         loop_count = 0
         
@@ -381,19 +397,19 @@ class VWAPBot(commands.Bot):
                self.channel_states[channel_id][interval]['running']):
             try:
                 loop_count += 1
-                print(f"🔁 Update loop iteration #{loop_count} for channel {channel_id} interval {interval}s")
+                logger.debug(f"🔁 Update loop iteration #{loop_count} for channel {channel_id} interval {interval}s")
                 
                 if first_update:
-                    print(f"🚀 Performing immediate update for channel {channel_id} interval {interval}s (post-restart)")
+                    logger.info(f"🚀 Performing immediate update for channel {channel_id} interval {interval}s (post-restart)")
                     first_update = False
                 
-                print(f"📊 Getting scanner data for channel {channel_id} interval {interval}s...")
+                logger.debug(f"📊 Getting scanner data for channel {channel_id} interval {interval}s...")
                 # Get updated data from callback
                 table_text = await self.update_callback()
-                print(f"✅ Got scanner data ({len(table_text) if table_text else 0} chars)")
+                logger.debug(f"✅ Got scanner data ({len(table_text) if table_text else 0} chars)")
 
                 if table_text and channel_id in self.channel_states and interval in self.channel_states[channel_id]:
-                    print(f"📤 Updating message in channel {channel_id} interval {interval}s")
+                    logger.debug(f"📤 Updating message in channel {channel_id} interval {interval}s")
                     # Handle both old format (string) and new format (tuple)
                     if isinstance(table_text, tuple):
                         table_data, last_updated = table_text
@@ -428,7 +444,7 @@ class VWAPBot(commands.Bot):
                     next_update_str = next_update.strftime('%H:%M:%S WIB')
 
                     # Generate table image
-                    print(f"🎨 Generating table image for channel {channel_id} interval {interval}s...")
+                    logger.debug(f"🎨 Generating table image for channel {channel_id} interval {interval}s...")
                     table_image = generate_table_image(table_data, session_name, weight, last_updated, TABLE_FOOTER_TEXT, interval_str, next_update_str)
 
                     # Create embed with image
@@ -458,12 +474,12 @@ class VWAPBot(commands.Bot):
 
                     message = self.channel_states[channel_id][interval]['message']
                     await message.edit(embed=embed, attachments=[file])
-                    print(f"✅ Table image updated in channel {channel_id} interval {interval}s")
+                    logger.info(f"✅ Table image updated in channel {channel_id} interval {interval}s")
                 elif channel_id in self.channel_states and interval in self.channel_states[channel_id]:
-                    print(f"⚠️ No data to update in channel {channel_id} interval {interval}s")
+                    logger.warning(f"⚠️ No data to update in channel {channel_id} interval {interval}s")
 
             except discord.NotFound:
-                print(f"❌ Message not found in channel {channel_id} interval {interval}s, stopping updates")
+                logger.error(f"❌ Message not found in channel {channel_id} interval {interval}s, stopping updates")
                 if channel_id in self.channel_states and interval in self.channel_states[channel_id]:
                     self.channel_states[channel_id][interval]['running'] = False
                     del self.channel_states[channel_id][interval]
@@ -472,7 +488,7 @@ class VWAPBot(commands.Bot):
                         del self.channel_states[channel_id]
                 break
             except Exception as e:
-                print(f"❌ Error updating message in channel {channel_id} interval {interval}s: {e}")
+                logger.error(f"❌ Error updating message in channel {channel_id} interval {interval}s: {e}")
                 import traceback
                 traceback.print_exc()
                 if channel_id in self.channel_states and interval in self.channel_states[channel_id]:
@@ -484,24 +500,24 @@ class VWAPBot(commands.Bot):
                 break
 
             # Wait before next update - with timer reset support
-            print(f"⏰ Waiting {interval} seconds before next update for channel {channel_id} (next update ~{(datetime.now() + timedelta(seconds=interval)).strftime('%H:%M:%S')} WIB)...")
+            logger.debug(f"⏰ Waiting {interval} seconds before next update for channel {channel_id} (next update ~{(datetime.now() + timedelta(seconds=interval)).strftime('%H:%M:%S')} WIB)...")
             
             # Wait for either timeout or reset event
             reset_event = self.channel_states[channel_id][interval]['reset_timer_event']
             try:
                 await asyncio.wait_for(reset_event.wait(), timeout=interval)
                 # Event was set - timer reset requested (session change)
-                print(f"🔄 Timer reset triggered for channel {channel_id} interval {interval}s (session change)")
+                logger.info(f"🔄 Timer reset triggered for channel {channel_id} interval {interval}s (session change)")
                 reset_event.clear()  # Clear the event for next time
-                print(f"⏰ Timer reset complete, continuing to next update...")
+                logger.debug(f"⏰ Timer reset complete, continuing to next update...")
             except asyncio.TimeoutError:
                 # Normal timeout - interval elapsed
-                print(f"⏰ Sleep completed for channel {channel_id} interval {interval}s, starting next update...")
+                logger.debug(f"⏰ Sleep completed for channel {channel_id} interval {interval}s, starting next update...")
                 pass
 
     async def monitor_session_changes(self):
         """Monitor for trading session changes and trigger updates"""
-        print("🔍 Session change monitor started")
+        logger.info("🔍 Session change monitor started")
         
         # Wait a bit for bot to fully initialize
         await asyncio.sleep(5)
@@ -509,9 +525,9 @@ class VWAPBot(commands.Bot):
         # Get initial session
         try:
             self.current_session, _ = detect_session()
-            print(f"📊 Initial session detected: {self.current_session}")
+            logger.info(f"📊 Initial session detected: {self.current_session}")
         except Exception as e:
-            print(f"❌ Failed to detect initial session: {e}")
+            logger.error(f"❌ Failed to detect initial session: {e}")
             self.current_session = "Unknown"
         
         while True:
@@ -520,22 +536,22 @@ class VWAPBot(commands.Bot):
                 
                 # Detect current session
                 new_session, new_weight = detect_session()
-                print(f"🔍 Session check: Current={self.current_session}, Detected={new_session}, Weight={new_weight}")
+                logger.debug(f"🔍 Session check: Current={self.current_session}, Detected={new_session}, Weight={new_weight}")
                 
                 # Check if session changed
                 if new_session != self.current_session:
-                    print(f"🔄 SESSION CHANGE DETECTED: {self.current_session} → {new_session}")
-                    print(f"📊 New session weight: {new_weight}")
+                    logger.info(f"🔄 SESSION CHANGE DETECTED: {self.current_session} → {new_session}")
+                    logger.info(f"📊 New session weight: {new_weight}")
                     self.current_session = new_session
                     
                     # Trigger immediate update for all active channels
-                    print("🚀 Triggering session change updates for all scanners...")
+                    logger.info("🚀 Triggering session change updates for all scanners...")
                     await self.trigger_all_updates()
                 else:
-                    print(f"✅ Session unchanged: {self.current_session}")
+                    logger.debug(f"✅ Session unchanged: {self.current_session}")
                     
             except Exception as e:
-                print(f"❌ Error in session monitoring: {e}")
+                logger.error(f"❌ Error in session monitoring: {e}")
                 import traceback
                 traceback.print_exc()
                 await asyncio.sleep(60)  # Continue monitoring even if error
@@ -543,10 +559,10 @@ class VWAPBot(commands.Bot):
     async def trigger_all_updates(self):
         """Trigger immediate update for all active channels/intervals"""
         if not self.channel_states:
-            print("ℹ️ No active channels to update")
+            logger.info("ℹ️ No active channels to update")
             return
         
-        print(f"🚀 Triggering updates for {sum(len(intervals) for intervals in self.channel_states.values())} active scanner(s)")
+        logger.info(f"🚀 Triggering updates for {sum(len(intervals) for intervals in self.channel_states.values())} active scanner(s)")
         
         # Collect all update tasks
         update_tasks = []
@@ -556,9 +572,9 @@ class VWAPBot(commands.Bot):
                     # Signal timer reset for this channel/interval
                     reset_event = self.channel_states[channel_id][interval]['reset_timer_event']
                     reset_event.set()
-                    print(f"🔄 Timer reset signal sent for channel {channel_id} interval {interval}s")
+                    logger.debug(f"🔄 Timer reset signal sent for channel {channel_id} interval {interval}s")
         
-        print(f"✅ Timer reset signals sent to all active scanners")
+        logger.info(f"✅ Timer reset signals sent to all active scanners")
 
     def set_update_callback(self, callback):
         """Set the callback function to get updated data"""
@@ -569,14 +585,14 @@ class VWAPBot(commands.Bot):
         # Cancel session monitoring task
         if self.session_check_task and not self.session_check_task.done():
             self.session_check_task.cancel()
-            print("🛑 Cancelled session monitoring task")
+            logger.info("🛑 Cancelled session monitoring task")
         
         # Cancel all running update tasks
         for channel_id, intervals in self.channel_states.items():
             for interval, state in intervals.items():
                 if state['task'] and not state['task'].done():
                     state['task'].cancel()
-                    print(f"🛑 Cancelled update task for channel {channel_id} interval {interval}s")
+                    logger.info(f"🛑 Cancelled update task for channel {channel_id} interval {interval}s")
 
         self.channel_states.clear()
         await super().close()
@@ -587,32 +603,32 @@ bot = VWAPBot()
 @bot.event
 async def on_ready():
     """Called when the bot is ready and connected to Discord"""
-    print(f"🤖 {bot.user} has connected to Discord!")
-    print(f"📊 Bot is in {len(bot.guilds)} servers")
+    logger.info(f"🤖 {bot.user} has connected to Discord!")
+    logger.info(f"📊 Bot is in {len(bot.guilds)} servers")
     
     # Now that we're connected, restore previous channel states
     await bot.restore_channel_states()
     
-    print("🎯 Ready to receive commands! Use !start in any channel to begin scanning")
+    logger.info("🎯 Ready to receive commands! Use !start in any channel to begin scanning")
 
 # Traditional commands (more reliable than slash commands)
 @bot.command(name="start")
 async def start_command(ctx):
     """Start VWAP scanner - Usage: !start"""
-    print(f"🚀 VWAP BOT v2.0 - !start command received from {ctx.author}")
+    logger.info(f"🚀 VWAP BOT v2.0 - !start command received from {ctx.author}")
 
     channel_id = ctx.channel.id
-    print(f"📝 Start command - Channel ID: {channel_id}, Guild: {ctx.guild.name if ctx.guild else 'DM'} (ID: {ctx.guild.id if ctx.guild else 'N/A'})")
+    logger.info(f"📝 Start command - Channel ID: {channel_id}, Guild: {ctx.guild.name if ctx.guild else 'DM'} (ID: {ctx.guild.id if ctx.guild else 'N/A'})")
 
     # Parse intervals from config
     intervals = parse_intervals(REFRESH_INTERVAL)
-    print(f"📊 Parsed intervals: {intervals} ({', '.join(format_interval(i) for i in intervals)})")
+    logger.info(f"📊 Parsed intervals: {intervals} ({', '.join(format_interval(i) for i in intervals)})")
 
     # Check if already running in this channel
     if channel_id in bot.channel_states:
         existing_intervals = list(bot.channel_states[channel_id].keys())
         if existing_intervals:
-            print(f"⚠️ Scanner already running in channel {channel_id} with intervals: {existing_intervals}")
+            logger.warning(f"⚠️ Scanner already running in channel {channel_id} with intervals: {existing_intervals}")
             await ctx.message.add_reaction("⚠️")
             intervals_str = ', '.join(format_interval(i) for i in existing_intervals)
             await ctx.send(f"🔄 VWAP scanner is already running in this channel!\nActive intervals: {intervals_str}")
@@ -632,7 +648,7 @@ async def start_command(ctx):
         # Create a message and start update loop for each interval
         for interval in intervals:
             interval_str = format_interval(interval)
-            print(f"📤 Creating message for interval {interval}s ({interval_str})...")
+            logger.info(f"📤 Creating message for interval {interval}s ({interval_str})...")
             
             # Send initial message
             embed = discord.Embed(
@@ -643,7 +659,7 @@ async def start_command(ctx):
 
             # Send the initial message and get the message object
             message = await ctx.send(embed=embed)
-            print(f"✅ Initial message sent for {interval_str}, message ID: {message.id}")
+            logger.info(f"✅ Initial message sent for {interval_str}, message ID: {message.id}")
 
             # Initialize interval state
             bot.channel_states[channel_id][interval] = {
@@ -658,37 +674,37 @@ async def start_command(ctx):
             save_channel_state(channel_id, interval, message.id, True, server_name, ctx.channel.name, guild_id)
 
             # Start the update loop for this interval
-            print(f"🔄 Starting update loop for channel {channel_id} interval {interval}s")
+            logger.info(f"🔄 Starting update loop for channel {channel_id} interval {interval}s")
             task = asyncio.create_task(bot.update_loop_for_channel(channel_id, interval))
             bot.channel_states[channel_id][interval]['task'] = task
 
         intervals_str = ', '.join(format_interval(i) for i in intervals)
-        print(f"✅ VWAP scanner started in channel: {ctx.channel.name} (ID: {channel_id}) with {len(intervals)} interval(s): {intervals_str}")
+        logger.info(f"✅ VWAP scanner started in channel: {ctx.channel.name} (ID: {channel_id}) with {len(intervals)} interval(s): {intervals_str}")
 
     except Exception as e:
-        print(f"❌ Error in start_command: {e}")
+        logger.error(f"❌ Error in start_command: {e}")
         import traceback
         traceback.print_exc()
         try:
             await ctx.message.add_reaction("❌")
             await ctx.send(f"❌ Error starting scanner: {str(e)[:100]}")
         except Exception as followup_error:
-            print(f"❌ Failed to send error message: {followup_error}")
+            logger.error(f"❌ Failed to send error message: {followup_error}")
 
 @bot.command(name="stop")
 async def stop_command(ctx):
     """Stop VWAP scanner - Usage: !stop"""
-    print(f"📥 !stop command received from {ctx.author}")
+    logger.info(f"📥 !stop command received from {ctx.author}")
     channel_id = ctx.channel.id
 
     if channel_id not in bot.channel_states or not bot.channel_states[channel_id]:
-        print(f"⚠️ No scanner running in channel {channel_id}")
+        logger.warning(f"⚠️ No scanner running in channel {channel_id}")
         await ctx.message.add_reaction("⚠️")
         await ctx.send("❌ VWAP scanner is not running in this channel!")
         return
 
     try:
-        print(f"🛑 Stopping scanner in channel {channel_id}")
+        logger.info(f"🛑 Stopping scanner in channel {channel_id}")
         
         # Get list of intervals before we start modifying
         intervals_to_stop = list(bot.channel_states[channel_id].keys())
@@ -696,7 +712,7 @@ async def stop_command(ctx):
         # Stop all intervals for this channel
         for interval in intervals_to_stop:
             interval_str = format_interval(interval)
-            print(f"🛑 Stopping interval {interval}s ({interval_str})")
+            logger.info(f"🛑 Stopping interval {interval}s ({interval_str})")
             
             # Stop the scanner for this interval
             bot.channel_states[channel_id][interval]['running'] = False
@@ -704,7 +720,7 @@ async def stop_command(ctx):
             # Cancel the update task
             if bot.channel_states[channel_id][interval]['task']:
                 bot.channel_states[channel_id][interval]['task'].cancel()
-                print(f"✅ Update task cancelled for {interval_str}")
+                logger.info(f"✅ Update task cancelled for {interval_str}")
 
             # Edit the message to show stopped state without image
             embed = discord.Embed(
@@ -715,7 +731,7 @@ async def stop_command(ctx):
 
             message = bot.channel_states[channel_id][interval]['message']
             await message.edit(embed=embed, attachments=[])
-            print(f"✅ Message edited to stopped state for {interval_str}")
+            logger.info(f"✅ Message edited to stopped state for {interval_str}")
 
         # React with checkmark to confirm command received
         await ctx.message.add_reaction("✅")
@@ -727,22 +743,22 @@ async def stop_command(ctx):
         remove_channel_state(channel_id)
 
         intervals_str = ', '.join(format_interval(i) for i in intervals_to_stop)
-        print(f"⏹️ VWAP scanner stopped in channel: {ctx.channel.name} (ID: {channel_id}) - {len(intervals_to_stop)} interval(s): {intervals_str}")
+        logger.info(f"⏹️ VWAP scanner stopped in channel: {ctx.channel.name} (ID: {channel_id}) - {len(intervals_to_stop)} interval(s): {intervals_str}")
 
     except Exception as e:
-        print(f"❌ Error in stop_command: {e}")
+        logger.error(f"❌ Error in stop_command: {e}")
         import traceback
         traceback.print_exc()
         try:
             await ctx.message.add_reaction("❌")
             await ctx.send(f"❌ Error stopping scanner: {str(e)[:100]}")
         except Exception as followup_error:
-            print(f"❌ Failed to send error message: {followup_error}")
+            logger.error(f"❌ Failed to send error message: {followup_error}")
 
 @bot.command(name="session")
 async def session_command(ctx):
     """Check current session and trigger manual update - Usage: !session"""
-    print(f"📊 !session command received from {ctx.author}")
+    logger.info(f"📊 !session command received from {ctx.author}")
     
     try:
         # Get current session
@@ -778,7 +794,7 @@ async def session_command(ctx):
             await ctx.send("✅ Manual update completed!")
         
     except Exception as e:
-        print(f"❌ Error in session_command: {e}")
+        logger.error(f"❌ Error in session_command: {e}")
         import traceback
         traceback.print_exc()
         await ctx.send(f"❌ Error: {str(e)}")
@@ -792,20 +808,20 @@ def send_table(table_text: str):
 async def start_bot():
     """Start the Discord bot"""
     if not DISCORD_BOT_TOKEN or DISCORD_BOT_TOKEN == "YOUR_DISCORD_BOT_TOKEN_HERE":
-        print("❌ DISCORD_BOT_TOKEN not set in config.py")
-        print("   Please set your Discord bot token from https://discord.com/developers/applications")
+        logger.error("❌ DISCORD_BOT_TOKEN not set in config.py")
+        logger.error("   Please set your Discord bot token from https://discord.com/developers/applications")
         return
 
     # Basic token format validation
     if not DISCORD_BOT_TOKEN or len(DISCORD_BOT_TOKEN) < 50:
-        print("❌ DISCORD_BOT_TOKEN appears to be invalid (too short)")
+        logger.error("❌ DISCORD_BOT_TOKEN appears to be invalid (too short)")
         return
 
     try:
         await bot.start(DISCORD_BOT_TOKEN)
     except Exception as e:
-        print(f"❌ Failed to start Discord bot: {e}")
-        print("   Make sure your bot token is correct and the bot has proper permissions")
+        logger.error(f"❌ Failed to start Discord bot: {e}")
+        logger.error("   Make sure your bot token is correct and the bot has proper permissions")
 
 def run_bot():
     """Run the bot (blocking)"""

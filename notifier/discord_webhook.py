@@ -1,13 +1,21 @@
 # notifier/discord_webhook.py
 
 import requests
+import logging
 from config import DISCORD_WEBHOOK_URL
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+handler = logging.StreamHandler()
+formatter = logging.Formatter('[%(filename)s:%(lineno)d] %(levelname)s: %(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
 
 MAX_DISCORD_CHARS = 1800  # buffer aman
 
 def send_table(table_text: str):
     if not DISCORD_WEBHOOK_URL:
-        print("⚠️ Discord webhook URL kosong")
+        logger.warning("Discord webhook URL kosong")
         return
 
     chunks = [
@@ -27,6 +35,6 @@ def send_table(table_text: str):
         )
 
         if r.status_code not in (200, 204):
-            print("❌ Discord error:", r.status_code, r.text)
+            logger.error(f"Discord error: {r.status_code} {r.text}")
         else:
-            print(f"✅ Discord chunk {idx}/{len(chunks)} sent")
+            logger.info(f"Discord chunk {idx}/{len(chunks)} sent")

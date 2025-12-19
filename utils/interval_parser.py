@@ -2,6 +2,15 @@
 Utility functions for parsing and formatting refresh intervals
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+handler = logging.StreamHandler()
+formatter = logging.Formatter('[%(filename)s:%(lineno)d] %(levelname)s: %(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+
 def parse_intervals(interval_str: str) -> list[int]:
     """
     Parse comma-separated interval string into list of integers
@@ -30,7 +39,7 @@ def parse_intervals(interval_str: str) -> list[int]:
         
         return intervals
     except (ValueError, AttributeError) as e:
-        print(f"⚠️ Invalid REFRESH_INTERVAL format: {interval_str}, using default [120]")
+        logger.warning(f"Invalid REFRESH_INTERVAL format: {interval_str}, using default [120]")
         return [120]
 
 

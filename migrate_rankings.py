@@ -5,18 +5,34 @@ This script migrates the old previous_rankings schema to include interval column
 
 import sqlite3
 import os
+import logging
 
 # Database path
 DB_PATH = '/app/data/bot_states.db' if os.path.exists('/app') else 'bot_states.db'
+
+# Set up custom logging with file details
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# Create console handler
+handler = logging.StreamHandler()
+handler.setLevel(logging.INFO)
+
+# Create formatter with file details in brackets
+formatter = logging.Formatter('[%(filename)s:%(lineno)d] %(levelname)s: %(message)s')
+handler.setFormatter(formatter)
+
+# Add handler to logger
+logger.addHandler(handler)
 
 def migrate_rankings_table():
     """Migrate previous_rankings table to include interval column"""
     
     if not os.path.exists(DB_PATH):
-        print("ℹ️ No existing database found, skipping migration")
+        logger.info("ℹ️ No existing database found, skipping migration")
         return
     
-    print("🔄 Starting previous_rankings table migration...")
+    logger.info("🔄 Starting previous_rankings table migration...")
     
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -29,13 +45,13 @@ def migrate_rankings_table():
         
         # Check if 'interval' column exists
         if 'interval' not in column_names:
-            print("📊 Old previous_rankings schema detected, performing migration...")
+            logger.info("📊 Old previous_rankings schema detected, performing migration...")
             
             # Get existing data from old table
             cursor.execute('SELECT id, session_name, symbol, rank, scan_time FROM previous_rankings')
             old_data = cursor.fetchall()
             
-            print(f"📦 Found {len(old_data)} existing ranking records")
+            logger.info(f"📦 Found {len(old_data)} existing ranking records")
             
             # Drop old table
             cursor.execute('DROP TABLE IF EXISTS previous_rankings')
@@ -78,12 +94,12 @@ def migrate_rankings_table():
                     pass
             
             conn.commit()
-            print(f"✅ Migration complete! Migrated {migrated_count} ranking records with default interval {DEFAULT_INTERVAL}s")
+            logger.info(f"✅ Migration complete! Migrated {migrated_count} ranking records with default interval {DEFAULT_INTERVAL}s")
         else:
-            print("ℹ️ Database already using new schema, no migration needed")
+            logger.info("ℹ️ Database already using new schema, no migration needed")
     
     except Exception as e:
-        print(f"❌ Migration failed: {e}")
+        logger.error(f"❌ Migration failed: {e}")
         conn.rollback()
         raise
     finally:

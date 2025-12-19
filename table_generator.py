@@ -8,14 +8,22 @@ import warnings
 import re
 import json
 import os
+import logging
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+handler = logging.StreamHandler()
+formatter = logging.Formatter('[%(filename)s:%(lineno)d] %(levelname)s: %(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
 
 # Import database functions
 try:
     from rank_db import save_previous_rankings, load_previous_rankings
     USE_DATABASE = True
-    print("✅ Using database for rank tracking")
+    logger.info("✅ Using database for rank tracking")
 except ImportError as e:
-    print(f"⚠️ Database import failed ({e}), using JSON fallback")
+    logger.warning(f"Database import failed ({e}), using JSON fallback")
     USE_DATABASE = False
 
 def calculate_rank_changes(current_rankings, previous_rankings, session_name):
@@ -64,7 +72,7 @@ def save_previous_rankings_fallback(rankings_data: dict):
         with open(RANKINGS_FILE, 'w') as f:
             json.dump(rankings_data, f, indent=2)
     except Exception as e:
-        print(f"Warning: Could not save rankings data: {e}")
+        logger.warning(f"Could not save rankings data: {e}")
 
 def load_previous_rankings_fallback() -> dict:
     """
@@ -80,7 +88,7 @@ def load_previous_rankings_fallback() -> dict:
         with open(RANKINGS_FILE, 'r') as f:
             return json.load(f)
     except Exception as e:
-        print(f"Warning: Could not load rankings data: {e}")
+        logger.warning(f"Could not load rankings data: {e}")
         return {}
 
 def calculate_rank_changes(current_rankings: list, previous_rankings: list, session_name: str) -> dict:
@@ -152,12 +160,12 @@ def generate_table_image(table_data: str, session_name: str = "UNKNOWN", weight:
         elif 's' in interval_lower:
             interval_seconds = int(float(interval_lower.replace('s', '')))
     
-    print(f"⏱️ Parsed interval: '{interval_str}' → {interval_seconds} seconds")
+    logger.info(f"⏱️ Parsed interval: '{interval_str}' → {interval_seconds} seconds")
 
     # Load previous rankings and calculate changes
     if USE_DATABASE:
         previous_rankings = load_previous_rankings(session_name, interval_seconds)
-        print(f"📊 Loaded {len(previous_rankings)} previous rankings for {session_name} [{interval_str}]")
+        logger.info(f"📊 Loaded {len(previous_rankings)} previous rankings for {session_name} [{interval_str}]")
     else:
         # Fallback to JSON (keep session-only for backward compatibility)
         previous_rankings_data = load_previous_rankings_fallback()
@@ -168,18 +176,18 @@ def generate_table_image(table_data: str, session_name: str = "UNKNOWN", weight:
     
     # Count symbols with changes
     symbols_with_changes = sum(1 for change in rank_changes.values() if change != 0)
-    print(f"📈 Rank changes: {symbols_with_changes}/{len(rank_changes)} symbols moved")
+    logger.info(f"📈 Rank changes: {symbols_with_changes}/{len(rank_changes)} symbols moved")
     if symbols_with_changes > 0:
         # Show a few examples
         changes_sample = [(sym, change) for sym, change in list(rank_changes.items())[:5] if change != 0]
         for sym, change in changes_sample:
             direction = "↑" if change > 0 else "↓"
-            print(f"   {sym}: {direction}{abs(change)}")
+            logger.info(f"   {sym}: {direction}{abs(change)}")
 
     # Save current rankings for next comparison
     if USE_DATABASE:
         save_previous_rankings(session_name, current_rankings, interval_seconds)
-        print(f"💾 Saved {len(current_rankings)} current rankings for next comparison")
+        logger.info(f"💾 Saved {len(current_rankings)} current rankings for next comparison")
     else:
         # Fallback to JSON
         previous_rankings_data[session_name] = current_rankings
