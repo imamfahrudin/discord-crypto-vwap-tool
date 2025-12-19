@@ -8,6 +8,8 @@ __pycache__/
 
 # Distribution / packaging
 .Python
+# Rank tracking data (now stored in database)
+previous_rankings.json
 build/
 develop-eggs/
 dist/

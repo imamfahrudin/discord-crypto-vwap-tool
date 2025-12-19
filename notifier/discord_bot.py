@@ -15,7 +15,10 @@ DB_PATH = '/app/data/bot_states.db' if os.path.exists('/app') else 'bot_states.d
 
 def init_database():
     """Initialize the database and create tables if they don't exist"""
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    # Ensure directory exists (only needed for Docker path)
+    db_dir = os.path.dirname(DB_PATH)
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
 
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -33,6 +36,68 @@ def init_database():
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+
+    # Create previous_rankings table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS previous_rankings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_name TEXT NOT NULL,
+            symbol TEXT NOT NULL,
+            rank INTEGER NOT NULL,
+            scan_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(session_name, symbol, scan_time)
+        )
+    ''')
+
+    # Migrate old table structure if it exists
+    try:
+        # Check if old table structure exists (without id column)
+        cursor.execute("PRAGMA table_info(previous_rankings)")
+        columns = cursor.fetchall()
+        column_names = [col[1] for col in columns]
+
+        if 'id' not in column_names and 'updated_at' in column_names:
+            print("🔄 Migrating previous_rankings table structure...")
+            # Create new table with proper structure
+            cursor.execute('''
+                CREATE TABLE previous_rankings_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_name TEXT NOT NULL,
+                    symbol TEXT NOT NULL,
+                    rank INTEGER NOT NULL,
+                    scan_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(session_name, symbol, scan_time)
+                )
+            ''')
+
+            # Copy data from old table
+            cursor.execute('''
+                INSERT INTO previous_rankings_new (session_name, symbol, rank, scan_time)
+                SELECT session_name, symbol, rank, updated_at FROM previous_rankings
+            ''')
+
+            # Replace old table
+            cursor.execute('DROP TABLE previous_rankings')
+            cursor.execute('ALTER TABLE previous_rankings_new RENAME TO previous_rankings')
+            print("✅ Successfully migrated previous_rankings table")
+        elif 'id' not in column_names:
+            print("🔄 Creating new previous_rankings table structure...")
+            # Drop old table and create new one
+            cursor.execute('DROP TABLE previous_rankings')
+
+            cursor.execute('''
+                CREATE TABLE previous_rankings (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_name TEXT NOT NULL,
+                    symbol TEXT NOT NULL,
+                    rank INTEGER NOT NULL,
+                    scan_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(session_name, symbol, scan_time)
+                )
+            ''')
+            print("✅ Created new previous_rankings table")
+    except Exception as e:
+        print(f"⚠️ Table migration check failed (probably normal): {e}")
 
     # Add guild_id column if it doesn't exist (migration)
     try:
@@ -92,6 +157,35 @@ def remove_channel_state(channel_id):
 
     conn.commit()
     conn.close()
+
+def save_previous_rankings(session_name: str, rankings: list):
+    """Save current rankings for a session to database"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    # Delete existing rankings for this session
+    cursor.execute('DELETE FROM previous_rankings WHERE session_name = ?', (session_name,))
+
+    # Insert new rankings
+    for symbol, rank in rankings:
+        cursor.execute('''
+            INSERT INTO previous_rankings (session_name, symbol, rank, updated_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        ''', (session_name, symbol, rank))
+
+    conn.commit()
+    conn.close()
+
+def load_previous_rankings(session_name: str) -> list:
+    """Load previous rankings for a session from database"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT symbol, rank FROM previous_rankings WHERE session_name = ? ORDER BY rank', (session_name,))
+    rows = cursor.fetchall()
+
+    conn.close()
+    return [(symbol, rank) for symbol, rank in rows]
 
 class VWAPBot(commands.Bot):
     def __init__(self):

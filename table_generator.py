@@ -6,6 +6,111 @@ from io import BytesIO
 from datetime import datetime
 import warnings
 import re
+import json
+import os
+
+# Import database functions
+try:
+    from rank_db import save_previous_rankings, load_previous_rankings
+    USE_DATABASE = True
+    print("✅ Using database for rank tracking")
+except ImportError as e:
+    print(f"⚠️ Database import failed ({e}), using JSON fallback")
+    USE_DATABASE = False
+
+def calculate_rank_changes(current_rankings, previous_rankings, session_name):
+    """
+    Calculate rank changes between current and previous rankings.
+    
+    Args:
+        current_rankings: List of (symbol, rank) tuples for current scan
+        previous_rankings: List of (symbol, rank) tuples for previous scan
+        session_name: Session name for logging
+    
+    Returns:
+        Dict of symbol -> rank_change (positive = moved up, negative = moved down)
+    """
+    if not previous_rankings:
+        return {}
+    
+    # Create dictionaries for easy lookup
+    current_dict = {symbol: rank for symbol, rank in current_rankings}
+    previous_dict = {symbol: rank for symbol, rank in previous_rankings}
+    
+    rank_changes = {}
+    
+    # Calculate changes for symbols that exist in both scans
+    for symbol in current_dict:
+        if symbol in previous_dict:
+            current_rank = current_dict[symbol]
+            previous_rank = previous_dict[symbol]
+            change = previous_rank - current_rank  # Positive = moved up
+            if change != 0:
+                rank_changes[symbol] = change
+    
+    return rank_changes
+
+# File to store previous rankings (fallback)
+RANKINGS_FILE = "previous_rankings.json"
+
+def save_previous_rankings_fallback(rankings_data: dict):
+    """
+    Save current rankings to JSON file for comparison in next run (fallback).
+
+    Args:
+        rankings_data: Dictionary with session_name as key and list of (symbol, rank) tuples as value
+    """
+    try:
+        with open(RANKINGS_FILE, 'w') as f:
+            json.dump(rankings_data, f, indent=2)
+    except Exception as e:
+        print(f"Warning: Could not save rankings data: {e}")
+
+def load_previous_rankings_fallback() -> dict:
+    """
+    Load previous rankings from JSON file (fallback).
+
+    Returns:
+        Dictionary with session_name as key and list of (symbol, rank) tuples as value
+    """
+    if not os.path.exists(RANKINGS_FILE):
+        return {}
+
+    try:
+        with open(RANKINGS_FILE, 'r') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Warning: Could not load rankings data: {e}")
+        return {}
+
+def calculate_rank_changes(current_rankings: list, previous_rankings: list, session_name: str) -> dict:
+    """
+    Calculate rank changes between current and previous rankings.
+
+    Args:
+        current_rankings: List of (symbol, rank) tuples for current session
+        previous_rankings: List of (symbol, rank) tuples for previous session
+        session_name: Current session name
+
+    Returns:
+        Dictionary mapping symbol to rank change (positive = moved up, negative = moved down)
+    """
+    if not previous_rankings:
+        return {}
+
+    # Create symbol to rank mapping for both current and previous
+    current_map = {symbol: rank for symbol, rank in current_rankings}
+    previous_map = {symbol: rank for symbol, rank in previous_rankings}
+
+    rank_changes = {}
+
+    # Calculate changes for symbols that appear in both rankings
+    for symbol in current_map:
+        if symbol in previous_map:
+            # Rank change = previous_rank - current_rank (positive means moved up)
+            rank_changes[symbol] = previous_map[symbol] - current_map[symbol]
+
+    return rank_changes
 
 def generate_table_image(table_data: str, session_name: str = "UNKNOWN", weight: str = "0.0", last_updated: str = None, footer_text: str = None) -> BytesIO:
     """
@@ -31,6 +136,28 @@ def generate_table_image(table_data: str, session_name: str = "UNKNOWN", weight:
         # Return a simple error image if parsing fails
         return generate_error_image("No data available")
 
+    # Extract current rankings for this session (list of (symbol, rank) tuples)
+    current_rankings = [(row[1], int(row[0])) for row in parsed_data]  # (symbol, rank)
+
+    # Load previous rankings and calculate changes
+    if USE_DATABASE:
+        previous_rankings = load_previous_rankings(session_name)
+    else:
+        # Fallback to JSON
+        previous_rankings_data = load_previous_rankings_fallback()
+        previous_rankings = previous_rankings_data.get(session_name, [])
+
+    # Calculate rank changes
+    rank_changes = calculate_rank_changes(current_rankings, previous_rankings, session_name)
+
+    # Save current rankings for next comparison
+    if USE_DATABASE:
+        save_previous_rankings(session_name, current_rankings)
+    else:
+        # Fallback to JSON
+        previous_rankings_data[session_name] = current_rankings
+        save_previous_rankings_fallback(previous_rankings_data)
+
     # Create figure with custom styling
     fig, ax = plt.subplots(figsize=(16, 10), facecolor='#ffffff')
     ax.set_facecolor('#ffffff')
@@ -47,7 +174,7 @@ def generate_table_image(table_data: str, session_name: str = "UNKNOWN", weight:
 
     # Define colors - Light theme
     header_color = '#2563eb'  # Blue header
-    alt_row_colors = ['#f8fafc', '#ffffff']  # Alternating light row colors
+    alt_row_colors = ['#f8fafc', '#f1f5f9']  # Alternating row colors (even rows darker)
     text_color = '#1e293b'
     border_color = '#e2e8f0'
 
@@ -69,19 +196,45 @@ def generate_table_image(table_data: str, session_name: str = "UNKNOWN", weight:
         for j, (header, value) in enumerate(zip(headers, row)):
             # Determine cell color based on signal
             cell_color = row_color
+            text_color_for_cell = text_color  # Initialize default text color
+            is_bold = False  # Initialize bold flag
+            
             if header == 'Signal':
+                # Keep default cell color, but color the text
                 if 'STRONG BUY' in str(value):
-                    cell_color = '#dcfce7'  # Light green for strong buy
+                    text_color_for_cell = '#0f5132'  # Very dark green for strong buy
+                    is_bold = True
                 elif 'BUY' in str(value):
-                    cell_color = '#ecfdf5'  # Very light green for buy
+                    text_color_for_cell = '#22c55e'  # Green for buy
+                    is_bold = True
                 elif 'STRONG SELL' in str(value):
-                    cell_color = '#fef2f2'  # Light red for strong sell
+                    text_color_for_cell = '#b91c1c'  # Very dark red for strong sell
+                    is_bold = True
                 elif 'SELL' in str(value):
-                    cell_color = '#fef2f2'  # Light red for sell
+                    text_color_for_cell = '#ef4444'  # Red for sell
+                    is_bold = True
 
-            cell = table.add_cell(i, j, width=1/len(headers), height=0.06, text=str(value),
+            # Special handling for Rank column to add change indicators
+            display_text = str(value)
+            if header == 'Rank':
+                text_color_for_cell = text_color  # Default text color for rank column
+                symbol = row[1]  # Symbol is in the second column
+                if symbol in rank_changes:
+                    change = rank_changes[symbol]
+                    if change > 0:
+                        # Moved up - green text
+                        display_text = f"{value} (▲{change})"
+                        text_color_for_cell = '#16a34a'  # Dark green text
+                    elif change < 0:
+                        # Moved down - red text
+                        display_text = f"{value} (▼{abs(change)})"
+                        text_color_for_cell = '#dc2626'  # Dark red text
+
+            cell = table.add_cell(i, j, width=1/len(headers), height=0.06, text=display_text,
                                  loc='center', facecolor=cell_color, edgecolor=border_color)
-            cell.get_text().set_color(text_color)
+            cell.get_text().set_color(text_color_for_cell)
+            if is_bold:
+                cell.get_text().set_fontweight('bold')
             cell.get_text().set_fontsize(9)
 
     # Add table to axes
@@ -140,7 +293,8 @@ def parse_table_data(table_data: str) -> list:
 
     for line in lines:
         line = line.strip()
-        if not line or line.startswith('=') or line.startswith('-') or 'RANK' in line or 'BYBIT' in line or 'Session' in line:
+        if not line or line.startswith('=') or line.startswith('-') or 'RANK' in line.upper() or 'BYBIT' in line.upper() or 'Session' in line.upper() or 'SYMBOL' in line.upper() or 'SIGNAL' in line.upper():
+            continue
             continue
 
         parts = line.split()
