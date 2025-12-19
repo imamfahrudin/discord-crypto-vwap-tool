@@ -408,6 +408,7 @@ async def start_command(ctx):
     # Check if already running in this channel
     if channel_id in bot.channel_states and bot.channel_states[channel_id]['running']:
         print(f"⚠️ Scanner already running in channel {channel_id}")
+        await ctx.message.add_reaction("⚠️")
         await ctx.send("🔄 VWAP scanner is already running in this channel!")
         return
 
@@ -423,6 +424,9 @@ async def start_command(ctx):
         # Send the initial message and get the message object
         message = await ctx.send(embed=embed)
         print(f"✅ Initial message sent, message ID: {message.id}")
+
+        # React with checkmark to confirm command received
+        await ctx.message.add_reaction("✅")
 
         # Initialize channel state
         bot.channel_states[channel_id] = {
@@ -448,6 +452,7 @@ async def start_command(ctx):
         import traceback
         traceback.print_exc()
         try:
+            await ctx.message.add_reaction("❌")
             await ctx.send(f"❌ Error starting scanner: {str(e)[:100]}")
         except Exception as followup_error:
             print(f"❌ Failed to send error message: {followup_error}")
@@ -460,6 +465,7 @@ async def stop_command(ctx):
 
     if channel_id not in bot.channel_states or not bot.channel_states[channel_id]['running']:
         print(f"⚠️ No scanner running in channel {channel_id}")
+        await ctx.message.add_reaction("⚠️")
         await ctx.send("❌ VWAP scanner is not running in this channel!")
         return
 
@@ -473,6 +479,9 @@ async def stop_command(ctx):
             bot.channel_states[channel_id]['task'].cancel()
             print("✅ Update task cancelled")
 
+        # React with checkmark to confirm command received
+        await ctx.message.add_reaction("✅")
+
         # Edit the message to show stopped state without image
         embed = discord.Embed(
             title="VWAP Scanner",
@@ -483,10 +492,6 @@ async def stop_command(ctx):
         message = bot.channel_states[channel_id]['message']
         await message.edit(embed=embed, attachments=[])
         print("✅ Message edited to stopped state")
-
-        # Also send a stopped message
-        await ctx.send(embed=embed)
-        print("✅ Stop message sent")
 
         # Clean up channel state
         del bot.channel_states[channel_id]
@@ -501,6 +506,7 @@ async def stop_command(ctx):
         import traceback
         traceback.print_exc()
         try:
+            await ctx.message.add_reaction("❌")
             await ctx.send(f"❌ Error stopping scanner: {str(e)[:100]}")
         except Exception as followup_error:
             print(f"❌ Failed to send error message: {followup_error}")
