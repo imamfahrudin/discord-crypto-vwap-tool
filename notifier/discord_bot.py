@@ -24,6 +24,7 @@ def init_database():
         CREATE TABLE IF NOT EXISTS channel_states (
             channel_id INTEGER PRIMARY KEY,
             message_id INTEGER NOT NULL,
+            guild_id INTEGER,
             running BOOLEAN NOT NULL DEFAULT 0,
             server_name TEXT,
             channel_name TEXT,
@@ -36,16 +37,16 @@ def init_database():
     conn.close()
     print("✅ Database initialized")
 
-def save_channel_state(channel_id, message_id, running, server_name=None, channel_name=None):
+def save_channel_state(channel_id, message_id, running, server_name=None, channel_name=None, guild_id=None):
     """Save or update channel state in database"""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute('''
         INSERT OR REPLACE INTO channel_states
-        (channel_id, message_id, running, server_name, channel_name, updated_at)
-        VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-    ''', (channel_id, message_id, running, server_name, channel_name))
+        (channel_id, message_id, guild_id, running, server_name, channel_name, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ''', (channel_id, message_id, guild_id, running, server_name, channel_name))
 
     conn.commit()
     conn.close()
@@ -55,16 +56,17 @@ def load_channel_states():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    cursor.execute('SELECT channel_id, message_id, running, server_name, channel_name FROM channel_states WHERE running = 1')
+    cursor.execute('SELECT channel_id, message_id, guild_id, running, server_name, channel_name FROM channel_states WHERE running = 1')
     rows = cursor.fetchall()
 
     conn.close()
 
     states = {}
     for row in rows:
-        channel_id, message_id, running, server_name, channel_name = row
+        channel_id, message_id, guild_id, running, server_name, channel_name = row
         states[channel_id] = {
             'message_id': message_id,
+            'guild_id': guild_id,
             'running': bool(running),
             'server_name': server_name,
             'channel_name': channel_name
@@ -115,10 +117,24 @@ class VWAPBot(commands.Bot):
 
         for channel_id, state_data in saved_states.items():
             try:
-                # Get the channel object
+                print(f"🔍 Attempting to restore channel {channel_id} (guild: {state_data.get('guild_id')}, server: {state_data.get('server_name')})")
+                
+                # Get the channel object - try multiple methods
+                channel = None
+                
+                # First try direct channel lookup
                 channel = self.get_channel(channel_id)
+                
+                # If that fails and we have a guild_id, try guild-specific lookup
+                if not channel and state_data.get('guild_id'):
+                    guild = self.get_guild(state_data['guild_id'])
+                    if guild:
+                        channel = guild.get_channel(channel_id)
+                        print(f"✅ Found channel via guild lookup: {guild.name}")
+                
                 if not channel:
-                    print(f"⚠️ Could not find channel {channel_id}, removing from database")
+                    print(f"⚠️ Could not find channel {channel_id} (guild: {state_data.get('guild_id')}), removing from database")
+                    print(f"   Available guilds: {[g.name for g in self.guilds]}")
                     remove_channel_state(channel_id)
                     continue
 
@@ -244,6 +260,7 @@ async def start_command(ctx):
     print(f"🚀 VWAP BOT v2.0 - !start command received from {ctx.author}")
 
     channel_id = ctx.channel.id
+    print(f"📝 Start command - Channel ID: {channel_id}, Guild: {ctx.guild.name if ctx.guild else 'DM'} (ID: {ctx.guild.id if ctx.guild else 'N/A'})")
 
     # Check if already running in this channel
     if channel_id in bot.channel_states and bot.channel_states[channel_id]['running']:
@@ -273,7 +290,8 @@ async def start_command(ctx):
 
         # Save state to database
         server_name = ctx.guild.name if ctx.guild else "DM"
-        save_channel_state(channel_id, message.id, True, server_name, ctx.channel.name)
+        guild_id = ctx.guild.id if ctx.guild else None
+        save_channel_state(channel_id, message.id, True, server_name, ctx.channel.name, guild_id)
 
         # Start the update loop for this channel
         print(f"🔄 Starting update loop for channel {channel_id}")
