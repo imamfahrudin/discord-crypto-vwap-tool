@@ -6,11 +6,15 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Install cloudflared for DNS over HTTPS
-RUN apt-get update && apt-get install -y curl && \
+RUN apt-get update && apt-get install -y curl tzdata && \
     curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o /tmp/cloudflared.deb && \
     dpkg -i /tmp/cloudflared.deb && \
     rm /tmp/cloudflared.deb && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Set timezone to Asia/Jakarta (WIB)
+ENV TZ=Asia/Jakarta
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 COPY . .
 
