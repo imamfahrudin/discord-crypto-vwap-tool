@@ -146,15 +146,18 @@ def generate_table_image(table_data: str, session_name: str = "UNKNOWN", weight:
     if interval_str:
         interval_lower = interval_str.lower()
         if 'm' in interval_lower:
-            interval_seconds = int(interval_lower.replace('m', '')) * 60
+            interval_seconds = int(float(interval_lower.replace('m', ''))) * 60
         elif 'h' in interval_lower:
             interval_seconds = int(float(interval_lower.replace('h', '')) * 3600)
         elif 's' in interval_lower:
-            interval_seconds = int(interval_lower.replace('s', ''))
+            interval_seconds = int(float(interval_lower.replace('s', '')))
+    
+    print(f"⏱️ Parsed interval: '{interval_str}' → {interval_seconds} seconds")
 
     # Load previous rankings and calculate changes
     if USE_DATABASE:
         previous_rankings = load_previous_rankings(session_name, interval_seconds)
+        print(f"📊 Loaded {len(previous_rankings)} previous rankings for {session_name} [{interval_str}]")
     else:
         # Fallback to JSON (keep session-only for backward compatibility)
         previous_rankings_data = load_previous_rankings_fallback()
@@ -162,10 +165,21 @@ def generate_table_image(table_data: str, session_name: str = "UNKNOWN", weight:
 
     # Calculate rank changes
     rank_changes = calculate_rank_changes(current_rankings, previous_rankings, session_name)
+    
+    # Count symbols with changes
+    symbols_with_changes = sum(1 for change in rank_changes.values() if change != 0)
+    print(f"📈 Rank changes: {symbols_with_changes}/{len(rank_changes)} symbols moved")
+    if symbols_with_changes > 0:
+        # Show a few examples
+        changes_sample = [(sym, change) for sym, change in list(rank_changes.items())[:5] if change != 0]
+        for sym, change in changes_sample:
+            direction = "↑" if change > 0 else "↓"
+            print(f"   {sym}: {direction}{abs(change)}")
 
     # Save current rankings for next comparison
     if USE_DATABASE:
         save_previous_rankings(session_name, current_rankings, interval_seconds)
+        print(f"💾 Saved {len(current_rankings)} current rankings for next comparison")
     else:
         # Fallback to JSON
         previous_rankings_data[session_name] = current_rankings

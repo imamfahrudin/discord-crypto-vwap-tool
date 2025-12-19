@@ -350,7 +350,8 @@ class VWAPBot(commands.Bot):
                         'message': message,
                         'running': True,
                         'task': None,
-                        'last_scheduled_update': datetime.now()  # Initialize with current time
+                        'last_scheduled_update': datetime.now(),  # Initialize with current time
+                        'reset_timer_event': asyncio.Event()  # Event to signal timer reset
                     }
 
                     # Resume the update loop
@@ -482,10 +483,21 @@ class VWAPBot(commands.Bot):
                         del self.channel_states[channel_id]
                 break
 
-            # Wait before next update
+            # Wait before next update - with timer reset support
             print(f"⏰ Waiting {interval} seconds before next update for channel {channel_id} (next update ~{(datetime.now() + timedelta(seconds=interval)).strftime('%H:%M:%S')} WIB)...")
-            await asyncio.sleep(interval)
-            print(f"⏰ Sleep completed for channel {channel_id} interval {interval}s, starting next update...")
+            
+            # Wait for either timeout or reset event
+            reset_event = self.channel_states[channel_id][interval]['reset_timer_event']
+            try:
+                await asyncio.wait_for(reset_event.wait(), timeout=interval)
+                # Event was set - timer reset requested (session change)
+                print(f"🔄 Timer reset triggered for channel {channel_id} interval {interval}s (session change)")
+                reset_event.clear()  # Clear the event for next time
+                print(f"⏰ Timer reset complete, continuing to next update...")
+            except asyncio.TimeoutError:
+                # Normal timeout - interval elapsed
+                print(f"⏰ Sleep completed for channel {channel_id} interval {interval}s, starting next update...")
+                pass
 
     async def monitor_session_changes(self):
         """Monitor for trading session changes and trigger updates"""
@@ -541,83 +553,12 @@ class VWAPBot(commands.Bot):
         for channel_id, intervals in self.channel_states.items():
             for interval in intervals:
                 if self.channel_states[channel_id][interval]['running']:
-                    # Create immediate update task
-                    task = asyncio.create_task(self.perform_single_update(channel_id, interval))
-                    update_tasks.append(task)
+                    # Signal timer reset for this channel/interval
+                    reset_event = self.channel_states[channel_id][interval]['reset_timer_event']
+                    reset_event.set()
+                    print(f"🔄 Timer reset signal sent for channel {channel_id} interval {interval}s")
         
-        # Wait for all updates to complete
-        if update_tasks:
-            await asyncio.gather(*update_tasks, return_exceptions=True)
-            print(f"✅ Session change updates completed for {len(update_tasks)} scanner(s)")
-    
-    async def perform_single_update(self, channel_id, interval):
-        """Perform a single update for a specific channel/interval"""
-        try:
-            print(f"📊 Session change update for channel {channel_id} interval {interval}s")
-            
-            # Get updated data
-            table_text = await self.update_callback()
-            
-            if table_text and channel_id in self.channel_states and interval in self.channel_states[channel_id]:
-                # Handle both old format (string) and new format (tuple)
-                if isinstance(table_text, tuple):
-                    table_data, last_updated = table_text
-                else:
-                    table_data = table_text
-                    wib_time = datetime.now()
-                    utc_time = datetime.utcnow()
-                    last_updated = f"{wib_time.strftime('%H:%M:%S')} WIB | {utc_time.strftime('%H:%M:%S')} UTC"
-
-                # Parse session info
-                session_name = "UNKNOWN"
-                weight = "0.0"
-                if isinstance(table_data, str):
-                    lines = table_data.split('\n')
-                    for line in lines:
-                        if line.startswith('Session :'):
-                            parts = line.replace('Session : ', '').split(' | ')
-                            if len(parts) >= 2:
-                                session_name = parts[0].strip()
-                                weight_part = parts[1].replace('Weight : ', '').strip()
-                                weight = weight_part
-                            break
-
-                interval_str = format_interval(interval)
-                
-                # Update scheduled time to maintain accurate next update display
-                self.channel_states[channel_id][interval]['last_scheduled_update'] = datetime.now()
-                next_update = self.channel_states[channel_id][interval]['last_scheduled_update'] + timedelta(seconds=interval)
-                next_update_str = next_update.strftime('%H:%M:%S WIB')
-
-                # Generate table image
-                table_image = generate_table_image(table_data, session_name, weight, last_updated, TABLE_FOOTER_TEXT, interval_str, next_update_str)
-
-                # Create embed
-                session_flag = get_session_flag(session_name)
-                next_session_name, next_session_time = get_next_session_info()
-                next_session_flag = get_session_flag(next_session_name)
-                
-                embed = discord.Embed(
-                    title=f"BYBIT FUTURES VWAP SCANNER - UPDATED EVERY {interval_str.upper()}",
-                    description=f"**Current Session:** {session_name} {session_flag}\n**Weight:** {weight}\n**Last Updated:** {last_updated}\n**Next Update:** {next_update_str}\n**Next Session:** {next_session_name} {next_session_flag} at {next_session_time}",
-                    color=discord.Color.blue()
-                )
-
-                filename = f"vwap_scanner_{interval}s_{datetime.utcnow().strftime('%H%M%S')}.png"
-                file = discord.File(table_image, filename=filename)
-                embed.set_image(url=f"attachment://{filename}")
-
-                if EMBED_FOOTER_TEXT:
-                    embed.set_footer(text=EMBED_FOOTER_TEXT)
-
-                message = self.channel_states[channel_id][interval]['message']
-                await message.edit(embed=embed, attachments=[file])
-                print(f"✅ Session change update completed for channel {channel_id} interval {interval}s")
-                
-        except Exception as e:
-            print(f"❌ Error in session change update for channel {channel_id} interval {interval}s: {e}")
-            import traceback
-            traceback.print_exc()
+        print(f"✅ Timer reset signals sent to all active scanners")
 
     def set_update_callback(self, callback):
         """Set the callback function to get updated data"""
@@ -709,7 +650,8 @@ async def start_command(ctx):
                 'message': message,
                 'running': True,
                 'task': None,
-                'last_scheduled_update': datetime.now()  # Track scheduled update time
+                'last_scheduled_update': datetime.now(),  # Track scheduled update time
+                'reset_timer_event': asyncio.Event()  # Event to signal timer reset
             }
 
             # Save state to database

@@ -95,9 +95,17 @@ def save_previous_rankings(session_name: str, rankings: list, interval: int = 12
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    # Delete existing rankings for this session and interval
-    cursor.execute('DELETE FROM previous_rankings WHERE session_name = ? AND interval = ?', 
-                   (session_name, interval))
+    # Delete old rankings (keep only last 2 scans for comparison)
+    # Keep the most recent scan for next comparison, delete older ones
+    cursor.execute('''
+        DELETE FROM previous_rankings 
+        WHERE session_name = ? AND interval = ? 
+        AND scan_time < (
+            SELECT MAX(scan_time) 
+            FROM previous_rankings 
+            WHERE session_name = ? AND interval = ?
+        )
+    ''', (session_name, interval, session_name, interval))
 
     # Insert new rankings with current timestamp
     for symbol, rank in rankings:
@@ -117,19 +125,37 @@ def load_previous_rankings(session_name: str, interval: int = 120) -> list:
         interval: Refresh interval in seconds (default: 120)
     
     Returns:
-        List of (symbol, rank) tuples
+        List of (symbol, rank) tuples from the PREVIOUS scan (not current)
     """
     init_rankings_table()  # Ensure table exists
 
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    # Get rankings for this session and interval
+    # Get the second-most recent scan_time (the previous one, not current)
+    cursor.execute('''
+        SELECT DISTINCT scan_time 
+        FROM previous_rankings
+        WHERE session_name = ? AND interval = ?
+        ORDER BY scan_time DESC
+        LIMIT 1 OFFSET 1
+    ''', (session_name, interval))
+    
+    previous_scan_time_row = cursor.fetchone()
+    
+    # If no previous scan exists, return empty list
+    if not previous_scan_time_row:
+        conn.close()
+        return []
+    
+    previous_scan_time = previous_scan_time_row[0]
+    
+    # Get rankings from that previous scan
     cursor.execute('''
         SELECT symbol, rank FROM previous_rankings
-        WHERE session_name = ? AND interval = ?
+        WHERE session_name = ? AND interval = ? AND scan_time = ?
         ORDER BY rank
-    ''', (session_name, interval))
+    ''', (session_name, interval, previous_scan_time))
 
     rows = cursor.fetchall()
     conn.close()
