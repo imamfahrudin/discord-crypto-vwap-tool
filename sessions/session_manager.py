@@ -1,22 +1,73 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from config import SESSION_WEIGHTS
 
+# Session definitions with local times (matching trading session notifier)
+SESSIONS_LOCAL = {
+    "Sydney":    (9, 18, "Australia/Sydney"),   # 09:00-18:00 AEST/AEDT
+    "Tokyo":     (9, 18, "Asia/Tokyo"),        # 09:00-18:00 JST, no DST
+    "London":    (8, 17, "Europe/London"),     # 08:00-17:00 GMT/BST
+    "New York":  (8, 17, "America/New_York")   # 08:00-17:00 EST/EDT
+}
+
 def detect_session():
-    h = datetime.now(timezone.utc).hour
-    if 0 <= h < 8:
-        return "ASIAN", SESSION_WEIGHTS["ASIAN"]
-    elif 8 <= h < 16:
-        return "LONDON", SESSION_WEIGHTS["LONDON"]
-    else:
-        return "NEW_YORK", SESSION_WEIGHTS["NEW_YORK"]
+    """Detect current active session based on UTC time and local session definitions"""
+    now_utc = datetime.now(timezone.utc)
+    current_hour_utc = now_utc.hour
+
+    # Convert local session times to UTC for comparison
+    for session_name, (start_local, end_local, tz_name) in SESSIONS_LOCAL.items():
+        # Calculate UTC hours for this session
+        utc_start, utc_end = get_utc_hours_for_session(start_local, end_local, tz_name, now_utc)
+
+        # Check if current UTC hour falls within this session
+        if utc_start < utc_end:
+            # Same day session
+            if utc_start <= current_hour_utc < utc_end:
+                return session_name, SESSION_WEIGHTS[session_name]
+        else:
+            # Overnight session
+            if current_hour_utc >= utc_start or current_hour_utc < utc_end:
+                return session_name, SESSION_WEIGHTS[session_name]
+
+    # Default fallback
+    return "London", SESSION_WEIGHTS["London"]
+
+def get_utc_hours_for_session(start_local, end_local, tz_name, reference_date):
+    """Convert local session hours to UTC hours for a given date"""
+    from pytz import timezone
+
+    tz = timezone(tz_name)
+    local_date = reference_date.astimezone(tz).date()
+
+    # Create local datetime objects
+    start_local_dt = tz.localize(datetime.combine(local_date, datetime.min.time().replace(hour=start_local)))
+    end_local_dt = tz.localize(datetime.combine(local_date, datetime.min.time().replace(hour=end_local)))
+
+    # Handle overnight sessions
+    if end_local_dt <= start_local_dt:
+        end_local_dt += timedelta(days=1)
+
+    # Convert to UTC
+    start_utc = start_local_dt.astimezone(timezone.utc).hour
+    end_utc = end_local_dt.astimezone(timezone.utc).hour
+
+    return start_utc, end_utc
 
 def session_start_timestamp():
+    """Get timestamp for current session start (legacy function)"""
     now = datetime.now(timezone.utc)
-    if 0 <= now.hour < 8:
-        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    elif 8 <= now.hour < 16:
-        start = now.replace(hour=8, minute=0, second=0, microsecond=0)
-    else:
-        start = now.replace(hour=16, minute=0, second=0, microsecond=0)
+    session_name, _ = detect_session()
 
+    # For backward compatibility, return a timestamp
+    # This is a simplified version - in production you'd want more accurate logic
+    if session_name == "Sydney":
+        hour = 23  # Approximate UTC start
+    elif session_name == "Tokyo":
+        hour = 0   # Approximate UTC start
+    elif session_name == "London":
+        hour = 7   # Approximate UTC start
+    else:  # New York
+        hour = 13  # Approximate UTC start
+
+    start = now.replace(hour=hour, minute=0, second=0, microsecond=0)
     return int(start.timestamp() * 1000)

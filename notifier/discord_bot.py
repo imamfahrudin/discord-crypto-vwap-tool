@@ -10,10 +10,15 @@ from config import DISCORD_BOT_TOKEN, REFRESH_INTERVAL, TABLE_FOOTER_TEXT, EMBED
 from typing import Optional
 from table_generator import generate_table_image
 from utils.interval_parser import parse_intervals, format_interval
+from sessions.session_manager import detect_session
 
 def get_session_flag(session_name: str) -> str:
     """Get flag emoji for trading session"""
     flags = {
+        'Sydney': '🇦🇺',
+        'Tokyo': '🇯🇵',
+        'London': '🇬🇧',
+        'New York': '🇺🇸',
         'ASIAN': '🌏',
         'LONDON': '🇬🇧',
         'NEW_YORK': '🇺🇸',

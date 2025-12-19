@@ -19,9 +19,10 @@ SELL_SCORE = -25
 STRONG_SELL_SCORE = -80
 
 SESSION_WEIGHTS = {
-    "ASIAN": 0.7,
-    "LONDON": 1.0,
-    "NEW_YORK": 1.2
+    "Sydney": 0.6,    # Asia-Pacific session
+    "Tokyo": 0.8,     # Asian session
+    "London": 1.0,    # European session
+    "New York": 1.2   # American session
 }
 
 # Table image footer text (optional - leave empty for no footer)
