@@ -6,9 +6,13 @@ Separated to avoid circular imports
 import sqlite3
 import os
 import logging
+import threading
 
 # Database setup
 DB_PATH = '/app/data/bot_states.db' if os.path.exists('/app') else 'bot_states.db'
+
+# Lock for database operations to prevent concurrent access
+db_lock = threading.Lock()
 
 # Set up custom logging with file details
 logger = logging.getLogger(__name__)
@@ -152,32 +156,33 @@ def save_previous_rankings(session_name: str, rankings: list, interval: int = 12
         rankings: List of (symbol, rank) tuples
         interval: Refresh interval in seconds (default: 120)
     """
-    init_rankings_table()  # Ensure table exists
+    with db_lock:
+        init_rankings_table()  # Ensure table exists
 
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
 
-    # Delete old rankings (keep only last 2 scans for comparison)
-    # Keep the most recent scan for next comparison, delete older ones
-    cursor.execute('''
-        DELETE FROM previous_rankings 
-        WHERE session_name = ? AND interval = ? 
-        AND scan_time < (
-            SELECT MAX(scan_time) 
-            FROM previous_rankings 
-            WHERE session_name = ? AND interval = ?
-        )
-    ''', (session_name, interval, session_name, interval))
-
-    # Insert new rankings with current timestamp
-    for symbol, rank in rankings:
+        # Delete old rankings (keep only last 2 scans for comparison)
+        # Keep the most recent scan for next comparison, delete older ones
         cursor.execute('''
-            INSERT INTO previous_rankings (session_name, interval, symbol, rank, scan_time)
-            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-        ''', (session_name, interval, symbol, rank))
+            DELETE FROM previous_rankings 
+            WHERE session_name = ? AND interval = ? 
+            AND scan_time < (
+                SELECT MAX(scan_time) 
+                FROM previous_rankings 
+                WHERE session_name = ? AND interval = ?
+            )
+        ''', (session_name, interval, session_name, interval))
 
-    conn.commit()
-    conn.close()
+        # Insert new rankings with current timestamp
+        for symbol, rank in rankings:
+            cursor.execute('''
+                INSERT INTO previous_rankings (session_name, interval, symbol, rank, scan_time)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ''', (session_name, interval, symbol, rank))
+
+        conn.commit()
+        conn.close()
 
 def load_previous_rankings(session_name: str, interval: int = 120) -> list:
     """Load the most recent previous rankings for a session and interval from database
@@ -189,36 +194,37 @@ def load_previous_rankings(session_name: str, interval: int = 120) -> list:
     Returns:
         List of (symbol, rank) tuples from the PREVIOUS scan (not current)
     """
-    init_rankings_table()  # Ensure table exists
+    with db_lock:
+        init_rankings_table()  # Ensure table exists
 
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
 
-    # Get the second-most recent scan_time (the previous one, not current)
-    cursor.execute('''
-        SELECT DISTINCT scan_time 
-        FROM previous_rankings
-        WHERE session_name = ? AND interval = ?
-        ORDER BY scan_time DESC
-        LIMIT 1 OFFSET 1
-    ''', (session_name, interval))
-    
-    previous_scan_time_row = cursor.fetchone()
-    
-    # If no previous scan exists, return empty list
-    if not previous_scan_time_row:
+        # Get the second-most recent scan_time (the previous one, not current)
+        cursor.execute('''
+            SELECT DISTINCT scan_time 
+            FROM previous_rankings
+            WHERE session_name = ? AND interval = ?
+            ORDER BY scan_time DESC
+            LIMIT 1 OFFSET 1
+        ''', (session_name, interval))
+        
+        previous_scan_time_row = cursor.fetchone()
+        
+        # If no previous scan exists, return empty list
+        if not previous_scan_time_row:
+            conn.close()
+            return []
+        
+        previous_scan_time = previous_scan_time_row[0]
+        
+        # Get rankings from that previous scan
+        cursor.execute('''
+            SELECT symbol, rank FROM previous_rankings
+            WHERE session_name = ? AND interval = ? AND scan_time = ?
+            ORDER BY rank
+        ''', (session_name, interval, previous_scan_time))
+
+        rows = cursor.fetchall()
         conn.close()
-        return []
-    
-    previous_scan_time = previous_scan_time_row[0]
-    
-    # Get rankings from that previous scan
-    cursor.execute('''
-        SELECT symbol, rank FROM previous_rankings
-        WHERE session_name = ? AND interval = ? AND scan_time = ?
-        ORDER BY rank
-    ''', (session_name, interval, previous_scan_time))
-
-    rows = cursor.fetchall()
-    conn.close()
-    return [(symbol, rank) for symbol, rank in rows]
+        return [(symbol, rank) for symbol, rank in rows]
