@@ -817,11 +817,26 @@ async def start_bot():
         logger.error("❌ DISCORD_BOT_TOKEN appears to be invalid (too short)")
         return
 
-    try:
-        await bot.start(DISCORD_BOT_TOKEN)
-    except Exception as e:
-        logger.error(f"❌ Failed to start Discord bot: {e}")
-        logger.error("   Make sure your bot token is correct and the bot has proper permissions")
+    max_retries = 5
+    retry_delay = 60  # Start with 60 seconds
+    for attempt in range(max_retries):
+        try:
+            logger.info(f"🚀 Starting Discord bot... (attempt {attempt + 1}/{max_retries})")
+            await bot.start(DISCORD_BOT_TOKEN)
+            break  # Success, exit loop
+        except discord.errors.HTTPException as e:
+            if e.status == 429:
+                logger.warning(f"⚠️ Rate limited (attempt {attempt + 1}/{max_retries}). Retrying in {retry_delay} seconds...")
+                await asyncio.sleep(retry_delay)
+                retry_delay *= 2  # Exponential backoff
+            else:
+                logger.error(f"❌ HTTP Error: {e}")
+                raise
+        except Exception as e:
+            logger.error(f"❌ Unexpected error: {e}")
+            raise
+    else:
+        logger.error(f"❌ Failed to start bot after {max_retries} attempts due to rate limiting.")
 
 def run_bot():
     """Run the bot (blocking)"""
