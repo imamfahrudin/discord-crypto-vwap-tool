@@ -13,11 +13,11 @@ from datetime import datetime
 
 # Set up custom logging with file details
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.WARNING)
 
 # Create console handler
 handler = logging.StreamHandler()
-handler.setLevel(logging.INFO)
+handler.setLevel(logging.WARNING)
 
 # Create formatter with file details in brackets
 formatter = logging.Formatter('[%(filename)s:%(lineno)d] %(levelname)s: %(message)s')

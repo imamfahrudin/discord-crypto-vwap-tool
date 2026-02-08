@@ -3,11 +3,11 @@ import logging
 
 # Set up custom logging with file details
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.WARNING)
 
 # Create console handler
 handler = logging.StreamHandler()
-handler.setLevel(logging.INFO)
+handler.setLevel(logging.WARNING)
 
 # Create formatter with file details in brackets
 formatter = logging.Formatter('[%(filename)s:%(lineno)d] %(levelname)s: %(message)s')
@@ -44,8 +44,6 @@ def render_table(rows, session, weight):
             f"{r['volume_m']:<7.2f} {r['rsi']:<6.1f} {r['macd']:<7.2f} {r['stoch']:<6.1f}"
         )
 
-    lines.append("=" * 150)
-
     table_text = "\n".join(lines)
-    logger.info(table_text)      # Terminal
+    # logger.info(table_text)      # Removed table logging to reduce clutter
     return table_text      # Discord
