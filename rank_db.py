@@ -14,20 +14,7 @@ DB_PATH = '/app/data/bot_states.db' if os.path.exists('/app') else 'bot_states.d
 # Lock for database operations to prevent concurrent access
 db_lock = threading.Lock()
 
-# Set up custom logging with file details
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.WARNING)
-
-# Create console handler
-handler = logging.StreamHandler()
-handler.setLevel(logging.WARNING)
-
-# Create formatter with file details in brackets
-formatter = logging.Formatter('[%(filename)s:%(lineno)d] %(levelname)s: %(message)s')
-handler.setFormatter(formatter)
-
-# Add handler to logger
-logger.addHandler(handler)
 
 def init_rankings_table():
     """Initialize the rankings table if it doesn't exist, or migrate if needed"""

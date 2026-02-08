@@ -19,20 +19,7 @@ from table_generator import generate_table_image
 from utils.interval_parser import parse_intervals, format_interval
 from sessions.session_manager import detect_session
 
-# Set up custom logging with file details
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.WARNING)
-
-# Create console handler
-handler = logging.StreamHandler()
-handler.setLevel(logging.WARNING)
-
-# Create formatter with file details in brackets
-formatter = logging.Formatter('[%(filename)s:%(lineno)d] %(levelname)s: %(message)s')
-handler.setFormatter(formatter)
-
-# Add handler to logger
-logger.addHandler(handler)
 
 def get_session_flag(session_name: str) -> str:
     """Get flag emoji for trading session"""

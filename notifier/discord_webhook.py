@@ -8,11 +8,6 @@ import os
 DISCORD_WEBHOOK_URL = os.environ.get('DISCORD_WEBHOOK_URL', '')
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.WARNING)
-handler = logging.StreamHandler()
-formatter = logging.Formatter('[%(filename)s:%(lineno)d] %(levelname)s: %(message)s')
-handler.setFormatter(formatter)
-logger.addHandler(handler)
 
 MAX_DISCORD_CHARS = 1800  # buffer aman
 

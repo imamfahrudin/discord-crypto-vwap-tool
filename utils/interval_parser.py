@@ -5,11 +5,6 @@ Utility functions for parsing and formatting refresh intervals
 import logging
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.WARNING)
-handler = logging.StreamHandler()
-formatter = logging.Formatter('[%(filename)s:%(lineno)d] %(levelname)s: %(message)s')
-handler.setFormatter(formatter)
-logger.addHandler(handler)
 
 def parse_intervals(interval_str: str) -> list[int]:
     """

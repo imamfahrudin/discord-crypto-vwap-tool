@@ -4,6 +4,12 @@ from datetime import datetime, timedelta, timezone
 import logging
 import os
 
+# Configure logging globally
+logging.basicConfig(
+    level=logging.WARNING,
+    format='[%(filename)s:%(lineno)d] %(levelname)s: %(message)s'
+)
+
 from bybit.rest import get_futures_symbols, get_session_candles
 from bybit.websocket import start_ws, prices
 
@@ -26,20 +32,7 @@ MIN_VOLUME_M = float(os.environ.get('MIN_VOLUME_M', 0.3))
 
 from utils.interval_parser import parse_intervals
 
-# Set up custom logging with file details
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.WARNING)
-
-# Create console handler
-handler = logging.StreamHandler()
-handler.setLevel(logging.WARNING)
-
-# Create formatter with file details in brackets
-formatter = logging.Formatter('[%(filename)s:%(lineno)d] %(levelname)s: %(message)s')
-handler.setFormatter(formatter)
-
-# Add handler to logger
-logger.addHandler(handler)
 
 # Global cache for scanner data
 scanner_cache = {

@@ -11,17 +11,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from table_generator import generate_table_image
 from datetime import datetime
 
-# Set up custom logging with file details
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.WARNING)
-
-# Create console handler
-handler = logging.StreamHandler()
-handler.setLevel(logging.WARNING)
-
-# Create formatter with file details in brackets
-formatter = logging.Formatter('[%(filename)s:%(lineno)d] %(levelname)s: %(message)s')
-handler.setFormatter(formatter)
 
 # Add handler to logger
 logger.addHandler(handler)

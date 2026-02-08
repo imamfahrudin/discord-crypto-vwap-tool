@@ -10,19 +10,7 @@ import logging
 # Database path
 DB_PATH = '/app/data/bot_states.db' if os.path.exists('/app') else 'bot_states.db'
 
-# Set up custom logging with file details
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.WARNING)
-
-# Create console handler
-handler = logging.StreamHandler()
-handler.setLevel(logging.WARNING)
-
-# Create formatter with file details in brackets
-formatter = logging.Formatter('[%(filename)s:%(lineno)d] %(levelname)s: %(message)s')
-handler.setFormatter(formatter)
-
-# Add handler to logger
 logger.addHandler(handler)
 
 def migrate_rankings_table():
