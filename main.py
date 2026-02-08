@@ -45,6 +45,7 @@ logger.addHandler(handler)
 scanner_cache = {
     'data': None,
     'last_updated': 0,
+    'last_successful_update': 0,
     'updating': False
 }
 
@@ -60,11 +61,17 @@ async def update_scanner_cache():
     try:
         logger.info("🔄 Updating scanner cache...")
         data = await get_scanner_data_raw()
-        scanner_cache['data'] = data
-        scanner_cache['last_updated'] = asyncio.get_event_loop().time()
-        logger.info("✅ Scanner cache updated")
+        if data:  # Only update if we got valid data
+            scanner_cache['data'] = data
+            scanner_cache['last_updated'] = asyncio.get_event_loop().time()
+            scanner_cache['last_successful_update'] = asyncio.get_event_loop().time()
+            logger.info("✅ Scanner cache updated successfully")
+        else:
+            logger.warning("⚠️ Scanner cache update returned no data, keeping previous cache")
     except Exception as e:
         logger.error(f"❌ Failed to update scanner cache: {e}")
+        # Don't clear the cache on failure - keep stale data as fallback
+        # The cache will be considered stale but still usable
     finally:
         scanner_cache['updating'] = False
 
@@ -187,7 +194,7 @@ async def get_scanner_data():
     cache_fresh = scanner_cache['data'] and (current_time - scanner_cache['last_updated']) < 30
     
     if not force_fresh_data and cache_fresh:
-        logger.info("✅ Using cached scanner data")
+        logger.info("✅ Using fresh cached scanner data")
         # Format timestamp in both WIB and UTC like the bot expects
         # Since container is in WIB timezone, datetime.now() gives WIB time
         cached_wib_time = datetime.now()
@@ -195,13 +202,27 @@ async def get_scanner_data():
         last_updated = f"{cached_wib_time.strftime('%H:%M:%S')} WIB | {cached_utc_time.strftime('%H:%M:%S')} UTC"
         return scanner_cache['data'], last_updated
     
-    # Cache is stale or fresh data is forced, update it
-    logger.info("🔄 Forcing fresh scanner data update (startup or cache stale)" if force_fresh_data else "🔄 Cache stale, updating scanner data")
+    # Cache is stale or fresh data is forced, try to update it
+    logger.info("🔄 Cache stale or fresh data forced, attempting update...")
     await update_scanner_cache()
     force_fresh_data = False  # Reset flag after first update
     
-    # Return cached data (might be None if update failed)
+    # Check if update was successful
     if scanner_cache['data']:
+        # Check how fresh the data is
+        time_since_update = current_time - scanner_cache.get('last_successful_update', 0)
+        if time_since_update < 60:  # Less than 1 minute old
+            freshness_status = "fresh"
+            icon = "✅"
+        elif time_since_update < 300:  # Less than 5 minutes old
+            freshness_status = "stale"
+            icon = "⚠️"
+        else:
+            freshness_status = "very stale"
+            icon = "❌"
+        
+        logger.info(f"{icon} Using {freshness_status} scanner data (updated {time_since_update:.1f}s ago)")
+        
         # Format timestamp in both WIB and UTC like the bot expects
         # Since container is in WIB timezone, datetime.now() gives WIB time
         fresh_wib_time = datetime.now()
@@ -209,6 +230,7 @@ async def get_scanner_data():
         last_updated = f"{fresh_wib_time.strftime('%H:%M:%S')} WIB | {fresh_utc_time.strftime('%H:%M:%S')} UTC"
         return scanner_cache['data'], last_updated
     else:
+        logger.error("❌ No scanner data available in cache")
         return "⚠️ Scanner data not available. Please try again in a moment.", "N/A"
 
 

@@ -397,6 +397,8 @@ class VWAPBot(commands.Bot):
         logger.info(f"🔄 Update loop started for channel {channel_id} interval {interval}s")
         first_update = True
         loop_count = 0
+        consecutive_failures = 0
+        max_consecutive_failures = 5  # Stop after 5 consecutive failures
         
         while (channel_id in self.channel_states and 
                interval in self.channel_states[channel_id] and 
@@ -481,6 +483,7 @@ class VWAPBot(commands.Bot):
                     message = self.channel_states[channel_id][interval]['message']
                     await message.edit(embed=embed, attachments=[file])
                     logger.info(f"✅ Table image updated in channel {channel_id} interval {interval}s")
+                    consecutive_failures = 0  # Reset failure counter on success
                 elif channel_id in self.channel_states and interval in self.channel_states[channel_id]:
                     logger.warning(f"⚠️ No data to update in channel {channel_id} interval {interval}s")
 
@@ -493,17 +496,50 @@ class VWAPBot(commands.Bot):
                     if not self.channel_states[channel_id]:
                         del self.channel_states[channel_id]
                 break
+            except discord.HTTPException as e:
+                consecutive_failures += 1
+                error_code = getattr(e, 'code', 'Unknown')
+                logger.error(f"❌ Discord HTTP error in channel {channel_id} interval {interval}s (code: {error_code}): {e}")
+                
+                if error_code == 429:  # Rate limit
+                    retry_after = getattr(e, 'retry_after', 60)
+                    logger.warning(f"⏰ Rate limited, waiting {retry_after}s before retry")
+                    await asyncio.sleep(min(retry_after, 300))  # Cap at 5 minutes
+                elif error_code in [500, 502, 503, 504]:  # Server errors
+                    logger.warning(f"🌐 Discord server error, retrying in 30s")
+                    await asyncio.sleep(30)
+                elif consecutive_failures >= max_consecutive_failures:
+                    logger.error(f"❌ Too many consecutive failures ({consecutive_failures}), stopping interval {interval}s")
+                    if channel_id in self.channel_states and interval in self.channel_states[channel_id]:
+                        self.channel_states[channel_id][interval]['running'] = False
+                        del self.channel_states[channel_id][interval]
+                        # Clean up empty channel entry
+                        if not self.channel_states[channel_id]:
+                            del self.channel_states[channel_id]
+                    break
+                else:
+                    logger.warning(f"⚠️ HTTP error (attempt {consecutive_failures}/{max_consecutive_failures}), continuing...")
+                    await asyncio.sleep(10)  # Brief pause before retry
+                continue  # Skip the normal sleep and retry immediately
             except Exception as e:
-                logger.error(f"❌ Error updating message in channel {channel_id} interval {interval}s: {e}")
+                consecutive_failures += 1
+                logger.error(f"❌ Unexpected error updating message in channel {channel_id} interval {interval}s: {e}")
                 import traceback
                 traceback.print_exc()
-                if channel_id in self.channel_states and interval in self.channel_states[channel_id]:
-                    self.channel_states[channel_id][interval]['running'] = False
-                    del self.channel_states[channel_id][interval]
-                    # Clean up empty channel entry
-                    if not self.channel_states[channel_id]:
-                        del self.channel_states[channel_id]
-                break
+                
+                if consecutive_failures >= max_consecutive_failures:
+                    logger.error(f"❌ Too many consecutive failures ({consecutive_failures}), stopping interval {interval}s")
+                    if channel_id in self.channel_states and interval in self.channel_states[channel_id]:
+                        self.channel_states[channel_id][interval]['running'] = False
+                        del self.channel_states[channel_id][interval]
+                        # Clean up empty channel entry
+                        if not self.channel_states[channel_id]:
+                            del self.channel_states[channel_id]
+                    break
+                else:
+                    logger.warning(f"⚠️ Error (attempt {consecutive_failures}/{max_consecutive_failures}), retrying in 30s...")
+                    await asyncio.sleep(30)  # Wait before retry
+                continue  # Skip the normal sleep and retry immediately
 
             # Wait before next update - with timer reset support
             logger.debug(f"⏰ Waiting {interval} seconds before next update for channel {channel_id} (next update ~{(datetime.now() + timedelta(seconds=interval)).strftime('%H:%M:%S')} WIB)...")
@@ -805,7 +841,97 @@ async def session_command(ctx):
         traceback.print_exc()
         await ctx.send(f"❌ Error: {str(e)}")
 
+@bot.command(name="health")
+async def health_command(ctx):
+    """Check health status of all active scanners - Usage: !health"""
+    logger.info(f"🏥 !health command received from {ctx.author}")
+    
+    try:
+        embed = discord.Embed(
+            title="🏥 VWAP Scanner Health Status",
+            description="Current status of all active scanner intervals",
+            color=discord.Color.green()
+        )
+        
+        if not bot.channel_states:
+            embed.add_field(name="Status", value="❌ No active scanners", inline=False)
+            await ctx.send(embed=embed)
+            return
+        
+        total_scanners = 0
+        healthy_scanners = 0
+        
+        for channel_id, intervals in bot.channel_states.items():
+            channel_name = "Unknown"
+            try:
+                channel = bot.get_channel(channel_id)
+                if channel:
+                    channel_name = channel.name
+            except:
+                channel_name = f"ID: {channel_id}"
+            
+            embed.add_field(
+                name=f"📺 Channel: {channel_name}",
+                value=f"Active intervals: {len(intervals)}",
+                inline=False
+            )
+            
+            for interval in intervals:
+                total_scanners += 1
+                interval_str = format_interval(interval)
+                state = intervals[interval]
+                
+                # Calculate time since last successful update
+                last_update = state.get('last_scheduled_update')
+                if last_update:
+                    time_since_update = datetime.now() - last_update
+                    minutes_since = time_since_update.total_seconds() / 60
+                    
+                    if minutes_since < interval / 60 * 1.5:  # Within 1.5x the interval
+                        status = "✅ Healthy"
+                        healthy_scanners += 1
+                        color = "🟢"
+                    elif minutes_since < interval / 60 * 3:  # Within 3x the interval
+                        status = "⚠️ Delayed"
+                        color = "🟡"
+                    else:
+                        status = "❌ Stale"
+                        color = "🔴"
+                    
+                    time_str = f"{minutes_since:.1f}min ago"
+                else:
+                    status = "❓ Never updated"
+                    time_str = "N/A"
+                    color = "⚪"
+                
+                running_status = "▶️ Running" if state['running'] else "⏸️ Stopped"
+                
+                embed.add_field(
+                    name=f"{color} {interval_str} ({running_status})",
+                    value=f"Status: {status}\nLast Update: {time_str}",
+                    inline=True
+                )
+        
+        # Summary
+        embed.add_field(
+            name="📊 Summary",
+            value=f"Total: {total_scanners} | Healthy: {healthy_scanners} | Issues: {total_scanners - healthy_scanners}",
+            inline=False
+        )
+        
+        await ctx.send(embed=embed)
+        
+    except Exception as e:
+        logger.error(f"❌ Error in health_command: {e}")
+        import traceback
+        traceback.print_exc()
+        await ctx.send(f"❌ Error checking health: {str(e)}")
+
 def send_table(table_text: str):
+    """Legacy function for backward compatibility - does nothing now"""
+    # This function is kept for compatibility but doesn't send anything
+    # The bot handles sending/updating messages internally
+    pass
     """Legacy function for backward compatibility - does nothing now"""
     # This function is kept for compatibility but doesn't send anything
     # The bot handles sending/updating messages internally
