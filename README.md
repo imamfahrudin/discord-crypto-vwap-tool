@@ -8,20 +8,22 @@ An intelligent Discord bot that scans cryptocurrency futures for VWAP (Volume We
 
 ## 🌟 Features
 
-- **Real-time VWAP Scanning**: Analyzes crypto futures using VWAP across Asian, London, and New York sessions
+- **Real-time VWAP Scanning**: Analyzes crypto futures using VWAP across Sydney, Tokyo, London, and New York sessions
 - **Multi-Interval Support**: Configure multiple refresh intervals for different time horizons (e.g., 10m, 30m, 1h)
-- **Multi-Session Analysis**: Weighted scoring system for different trading sessions (Asian: 0.7x, London: 1.0x, New York: 1.2x)
+- **Multi-Session Analysis**: Weighted scoring system for different trading sessions (Sydney: 0.6x, Tokyo: 0.8x, London: 1.0x, New York: 1.2x)
 - **Technical Indicators**: RSI, MACD, and Stochastic analysis for signal confirmation
-- **Discord Bot Integration**: Interactive commands (`!start`, `!stop`) with live-updating signal tables
+- **Discord Bot Integration**: Interactive commands (`!start`, `!stop`, `!session`, `!health`) with live-updating signal tables
 - **Independent Message Updates**: Multiple tables update independently at their own intervals
 - **Volume Filtering**: Minimum volume thresholds to ensure signal quality
 - **Configurable Scoring**: Customizable score thresholds for different signal strengths
 - **Docker Support**: Ready-to-deploy with Docker and Docker Compose
+- **Cloudflare WARP Integration**: Optional DNS over HTTPS for enhanced privacy and reliability
 - **Comprehensive Tables**: Professional signal tables with emojis and detailed metrics
 - **Session-Based Weighting**: Different importance weights for each trading session
+- **Health Monitoring**: Real-time health status of all active scanners
+- **Persistent State**: Bot remembers active scanners across restarts using SQLite database
 - **Error Handling**: Robust error handling and logging for reliable operation
 - **Rate Limiting**: Built-in delays to respect API limits
-- **Persistent State**: Bot remembers active scanners across restarts
 
 ## 📋 Prerequisites
 
@@ -52,9 +54,10 @@ An intelligent Discord bot that scans cryptocurrency futures for VWAP (Volume We
 
 4. **Required Permissions**
    - ✅ Send Messages
-   - ✅ Use Slash Commands
+   - ✅ Use Slash Commands (optional, bot works with traditional commands)
    - ✅ Read Message History
    - ✅ Embed Links
+   - ✅ Attach Files (for table images)
 
 ## 🚀 Quick Start
 
@@ -68,9 +71,9 @@ An intelligent Discord bot that scans cryptocurrency futures for VWAP (Volume We
 
 2. **Configure the bot**
    ```bash
-   # Copy the example config file and edit with your Discord webhook URL
-   cp config.example.py config.py
-   nano config.py
+   # Copy the example env file and edit with your Discord webhook URL
+   cp .env.example .env
+   nano .env
    ```
 
 3. **Build and run with Docker Compose**
@@ -83,7 +86,19 @@ An intelligent Discord bot that scans cryptocurrency futures for VWAP (Volume We
    docker-compose logs -f
    ```
 
-### Option 2: Local Python Deployment
+#### Docker Features
+- **Cloudflare WARP Integration**: Optional DNS over HTTPS for enhanced privacy and reliability
+- **Health Checks**: Automatic container health monitoring with DNS connectivity tests
+- **Persistent Data**: SQLite database persistence for scanner states across container restarts
+- **Timezone Configuration**: Automatic WIB (UTC+7) timezone setting
+- **Network Configuration**: Custom bridge network with IPv6 support
+- **Privileged Mode**: Required for WARP VPN functionality
+
+#### Environment Variables for Docker
+The Docker setup uses the same `.env` file as local deployment. The `USE_WARP` variable controls Cloudflare WARP:
+```
+USE_WARP=true  # Enable Cloudflare WARP for DNS over HTTPS (recommended for Docker)
+```
 
 1. **Clone the repository**
    ```bash
@@ -104,9 +119,9 @@ An intelligent Discord bot that scans cryptocurrency futures for VWAP (Volume We
 
 4. **Configure the bot**
    ```bash
-   # Copy and edit the config file
-   cp config.example.py config.py
-   # Edit config.py with your Discord webhook URL
+   # Copy and edit the env file
+   cp .env.example .env
+   # Edit .env with your Discord bot token and other settings
    ```
 
 5. **Run the bot**
@@ -116,52 +131,67 @@ An intelligent Discord bot that scans cryptocurrency futures for VWAP (Volume We
 
 ## ⚙️ Configuration
 
-### Config File Setup
+### Environment Variables Setup
 
-Copy the example configuration file and customize it:
+Copy the example environment file and customize it:
 
 ```bash
-cp config.example.py config.py
+cp .env.example .env
 ```
 
-Then edit `config.py` with your settings:
+Then edit `.env` with your settings:
 
-```python
-DISCORD_BOT_TOKEN = "YOUR_DISCORD_BOT_TOKEN_HERE"
+```bash
+# Enable Cloudflare WARP for DNS over HTTPS
+USE_WARP=true
 
-MAX_SYMBOLS = 120          # Maximum symbols to scan
+# Discord Bot Token from https://discord.com/developers/applications
+DISCORD_BOT_TOKEN=YOUR_DISCORD_BOT_TOKEN_HERE
+
+# Maximum number of symbols to scan
+MAX_SYMBOLS=120
+
 # ⏱️ Refresh intervals in seconds (comma-separated for multiple tables)
 # Examples: "120" (single 2m table), "600,1800,3600" (10m, 30m, 1h tables)
-REFRESH_INTERVAL = "120"   # Can be single value or comma-separated
-TOP_N = 15                 # Number of top signals to display
-MIN_VOLUME_M = 0.3         # Minimum volume in millions USDT
+REFRESH_INTERVAL=300,900,1800,3600
 
-# Score thresholds for signals
-STRONG_SCORE = 80
-BUY_SCORE = 25
-SELL_SCORE = -25
-STRONG_SELL_SCORE = -80
+# Top N symbols to display
+TOP_N=15
 
-# Session weights for different trading sessions
-SESSION_WEIGHTS = {
-    "ASIAN": 0.7,     # Asian session weight
-    "LONDON": 1.0,    # London session weight
-    "NEW_YORK": 1.2   # New York session weight
-}
+# Minimum volume to consider valid (in Million USDT)
+MIN_VOLUME_M=0.3
+
+# Score thresholds
+STRONG_SCORE=80
+BUY_SCORE=25
+SELL_SCORE=-25
+STRONG_SELL_SCORE=-80
+
+# Session weights as JSON object
+SESSION_WEIGHTS={"Sydney": 0.6, "Tokyo": 0.8, "London": 1.0, "New York": 1.2}
+
+# Table image footer text (optional - leave empty for no footer)
+TABLE_FOOTER_TEXT=
+
+# Embed footer text (optional - leave empty for no footer)
+EMBED_FOOTER_TEXT=
 ```
 
 **Configuration Options:**
+- **USE_WARP** (optional): Enable Cloudflare WARP for DNS over HTTPS in Docker. Default: `true`
 - **DISCORD_BOT_TOKEN** (required): Your Discord bot token from the Developer Portal
 - **MAX_SYMBOLS** (optional): Maximum number of symbols to scan. Default: 120
 - **REFRESH_INTERVAL** (optional): Refresh interval(s) in seconds. 
   - Single interval: `"120"` (one table updating every 2 minutes)
   - Multiple intervals: `"600,1800,3600"` (three tables: 10m, 30m, and 1h)
   - When multiple intervals are specified, each gets its own message that updates independently
-  - Default: `"120"`
+  - Default: `"300,900,1800,3600"`
 - **TOP_N** (optional): Number of top signals to display. Default: 15
 - **MIN_VOLUME_M** (optional): Minimum volume in millions USDT. Default: 0.3
 - **Score Thresholds**: Customize signal strength thresholds
-- **SESSION_WEIGHTS**: Weight different trading sessions (Asian/London/New York)
+- **SESSION_WEIGHTS**: Weight different trading sessions as JSON object
+- **TABLE_FOOTER_TEXT**: Optional footer text for table images
+- **EMBED_FOOTER_TEXT**: Optional footer text for Discord embeds
 
 ## 🔧 How It Works
 
@@ -201,13 +231,14 @@ RANK  SYMBOL          SIGNAL               SCORE    PRICE       VWAP        VOL(
 
 ### Session Analysis
 
-The bot analyzes three major trading sessions with different weights:
+The bot analyzes four major trading sessions with different weights:
 
-- **ASIAN** (0.7x weight): Asian trading hours
-- **LONDON** (1.0x weight): European trading hours
-- **NEW_YORK** (1.2x weight): US trading hours
+- **SYDNEY** (0.6x weight): Sydney trading hours (Australia)
+- **TOKYO** (0.8x weight): Tokyo trading hours (Japan)
+- **LONDON** (1.0x weight): London trading hours (Europe)
+- **NEW YORK** (1.2x weight): New York trading hours (US)
 
-Higher weight sessions have more influence on the final signal score.
+Higher weight sessions have more influence on the final signal score. The bot automatically detects the current active session and may include previous session data for more accurate analysis.
 
 ## 🤖 Discord Bot Commands
 
@@ -239,9 +270,26 @@ Each table clearly displays its timeframe in both the Discord embed title and th
   - Updates all messages with "VWAP scanner stopped"
   - Cleans up all running tasks and database entries
 
+### `!session`
+- **Description**: Check current session status and trigger manual updates
+- **Usage**: Type `!session` to see current session information
+- **Behavior**:
+  - Shows current active trading session with flag emoji
+  - Displays session weight and monitoring status
+  - Shows count of active scanners
+  - Triggers manual update for all running scanners
+
+### `!health`
+- **Description**: Check health status of all active scanners
+- **Usage**: Type `!health` to monitor scanner performance
+- **Behavior**:
+  - Shows status of all active scanner intervals
+  - Displays last update times and health indicators
+  - Color-coded status: ✅ Healthy, ⚠️ Delayed, ❌ Stale
+
 ### Command Permissions
-- Both commands are available to all users in channels where the bot has message permissions
-- The bot must have "Send Messages" and "Embed Links" permissions in the channel
+- All commands are available to all users in channels where the bot has message permissions
+- The bot must have "Send Messages", "Embed Links", and "Attach Files" permissions in the channel
 
 ## 📝 Logging
 
@@ -279,8 +327,18 @@ docker-compose logs -f
 - **Solution**: Ensure bot has "Send Messages", "Use Slash Commands", and "Embed Links" permissions
 
 ### Configuration errors
-- **Issue**: Missing or invalid config.py
-- **Solution**: Ensure `config.py` exists and is properly formatted. Copy from `config.example.py`
+- **Issue**: Missing or invalid .env file
+- **Solution**: Ensure `.env` exists and is properly formatted. Copy from `.env.example`
+
+### Docker Issues
+- **Issue**: Container fails to start with WARP errors
+- **Solution**: Set `USE_WARP=false` in your `.env` file to disable Cloudflare WARP, or ensure privileged mode is enabled in docker-compose.yml
+- **Issue**: Health check failures
+- **Solution**: Check network connectivity and DNS resolution. The container uses `nslookup` to test connectivity
+- **Issue**: Database not persisting between restarts
+- **Solution**: Ensure the `bot_data` volume is properly configured in docker-compose.yml
+- **Issue**: High CPU usage
+- **Solution**: The bot performs parallel processing for multiple exchanges. This is normal behavior during scanning
 
 ## 🤝 Contributing
 
@@ -301,6 +359,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [Bybit](https://www.bybit.com/) for exchange data and API access
 - [pandas](https://pandas.pydata.org/) for data manipulation
 - [requests](https://requests.readthedocs.io/) for HTTP client functionality
+- [Docker](https://www.docker.com/) for containerization
+- [Cloudflare WARP](https://1.1.1.1/) for DNS over HTTPS functionality
+- [discord.py](https://discordpy.readthedocs.io/) for Discord API integration
 
 ## 📧 Contact
 
