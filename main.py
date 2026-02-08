@@ -6,7 +6,7 @@ import os
 
 # Configure logging globally
 logging.basicConfig(
-    level=logging.WARNING,
+    level=logging.INFO,
     format='[%(filename)s:%(lineno)d] %(levelname)s: %(message)s'
 )
 
