@@ -6,14 +6,18 @@ logger = logging.getLogger(__name__)
 
 def on_message(ws,msg):
     global last_update
-    data=json.loads(msg)
-    if "data" in data:
-        for d in data["data"]:
-            prices[d["symbol"]]=float(d["lastPrice"])
-        last_update = time.time()
-        # Log every 60 seconds
-        if time.time() - last_update > 60:
-            logger.info(f"📡 WebSocket updated {len(prices)} prices")
+    try:
+        data=json.loads(msg)
+        if isinstance(data, dict) and "data" in data:
+            for d in data["data"]:
+                if "symbol" in d and "lastPrice" in d:
+                    prices[d["symbol"]]=float(d["lastPrice"])
+            last_update = time.time()
+            # Log every 60 seconds
+            if time.time() - last_update > 60:
+                logger.info(f"📡 WebSocket updated {len(prices)} prices")
+    except Exception as e:
+        logger.error(f"Error processing WebSocket message: {e}")
 
 def start_ws(symbols):
     args=[f"tickers.{s}" for s in symbols]
