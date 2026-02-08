@@ -161,7 +161,6 @@ data/
 cache/
 
 # API keys and secrets
-config.py
 secrets.json
 keys.json
 *.key
