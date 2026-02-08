@@ -1,6 +1,10 @@
 from datetime import datetime, timezone as dt_timezone, timedelta
-from config import SESSION_WEIGHTS
+import os
+import json
 import pytz
+
+# Load SESSION_WEIGHTS from environment
+SESSION_WEIGHTS = json.loads(os.environ.get('SESSION_WEIGHTS', '{"Sydney": 0.6, "Tokyo": 0.8, "London": 1.0, "New York": 1.2}'))
 
 # Session definitions with local times (matching trading session notifier)
 SESSIONS_LOCAL = {

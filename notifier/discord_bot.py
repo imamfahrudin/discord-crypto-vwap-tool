@@ -7,7 +7,13 @@ from datetime import datetime, timedelta, timezone
 import sqlite3
 import os
 import logging
-from config import DISCORD_BOT_TOKEN, REFRESH_INTERVAL, TABLE_FOOTER_TEXT, EMBED_FOOTER_TEXT
+
+# Load config from environment
+DISCORD_BOT_TOKEN = os.environ.get('DISCORD_BOT_TOKEN', '')
+REFRESH_INTERVAL = os.environ.get('REFRESH_INTERVAL', '300,900,1800,3600')
+TABLE_FOOTER_TEXT = os.environ.get('TABLE_FOOTER_TEXT', '')
+EMBED_FOOTER_TEXT = os.environ.get('EMBED_FOOTER_TEXT', '')
+
 from typing import Optional
 from table_generator import generate_table_image
 from utils.interval_parser import parse_intervals, format_interval

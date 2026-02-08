@@ -2,7 +2,10 @@
 
 import requests
 import logging
-from config import DISCORD_WEBHOOK_URL
+import os
+
+# Load config from environment
+DISCORD_WEBHOOK_URL = os.environ.get('DISCORD_WEBHOOK_URL', '')
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)

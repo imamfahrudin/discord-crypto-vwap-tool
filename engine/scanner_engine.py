@@ -1,11 +1,12 @@
 # engine/scanner_engine.py
 
-from config import (
-    STRONG_SCORE,
-    BUY_SCORE,
-    SELL_SCORE,
-    STRONG_SELL_SCORE
-)
+import os
+
+# Load config from environment
+STRONG_SCORE = int(os.environ.get('STRONG_SCORE', 80))
+BUY_SCORE = int(os.environ.get('BUY_SCORE', 25))
+SELL_SCORE = int(os.environ.get('SELL_SCORE', -25))
+STRONG_SELL_SCORE = int(os.environ.get('STRONG_SELL_SCORE', -80))
 
 def classify_signal(score: float) -> str:
     if score >= STRONG_SCORE:

@@ -2,6 +2,7 @@ import asyncio
 import aiohttp
 from datetime import datetime, timedelta, timezone
 import logging
+import os
 
 from bybit.rest import get_futures_symbols, get_session_candles
 from bybit.websocket import start_ws, prices
@@ -18,11 +19,11 @@ from engine.scanner_engine import scan
 from output.table import render_table
 from notifier.discord_bot import bot, send_table, start_bot
 
-from config import (
-    MAX_SYMBOLS,
-    REFRESH_INTERVAL,
-    MIN_VOLUME_M
-)
+# Load config from environment
+MAX_SYMBOLS = int(os.environ.get('MAX_SYMBOLS', 120))
+REFRESH_INTERVAL = os.environ.get('REFRESH_INTERVAL', '300,900,1800,3600')
+MIN_VOLUME_M = float(os.environ.get('MIN_VOLUME_M', 0.3))
+
 from utils.interval_parser import parse_intervals
 
 # Set up custom logging with file details
