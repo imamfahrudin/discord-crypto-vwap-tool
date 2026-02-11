@@ -153,7 +153,7 @@ MAX_SYMBOLS=120
 
 # ⏱️ Refresh intervals in seconds (comma-separated for multiple tables)
 # Examples: "120" (single 2m table), "600,1800,3600" (10m, 30m, 1h tables)
-REFRESH_INTERVAL=300,900,1800,3600
+REFRESH_INTERVAL=300
 
 # Top N symbols to display
 TOP_N=15
@@ -185,7 +185,7 @@ EMBED_FOOTER_TEXT=
   - Single interval: `"120"` (one table updating every 2 minutes)
   - Multiple intervals: `"600,1800,3600"` (three tables: 10m, 30m, and 1h)
   - When multiple intervals are specified, each gets its own message that updates independently
-  - Default: `"300,900,1800,3600"`
+  - Default: `"300"`
 - **TOP_N** (optional): Number of top signals to display. Default: 15
 - **MIN_VOLUME_M** (optional): Minimum volume in millions USDT. Default: 0.3
 - **Score Thresholds**: Customize signal strength thresholds
