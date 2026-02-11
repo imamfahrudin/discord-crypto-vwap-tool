@@ -1,5 +1,3 @@
-# notifier/discord_bot.py
-
 import discord
 from discord.ext import commands, tasks
 import asyncio
@@ -7,12 +5,16 @@ from datetime import datetime, timedelta, timezone
 import sqlite3
 import os
 import logging
+import time
 
 # Load config from environment
 DISCORD_BOT_TOKEN = os.environ.get('DISCORD_BOT_TOKEN', '')
 REFRESH_INTERVAL = os.environ.get('REFRESH_INTERVAL', '300,900,1800,3600')
 TABLE_FOOTER_TEXT = os.environ.get('TABLE_FOOTER_TEXT', '')
 EMBED_FOOTER_TEXT = os.environ.get('EMBED_FOOTER_TEXT', '')
+RATE_LIMIT_MIN_INTERVAL = float(os.environ.get('RATE_LIMIT_MIN_INTERVAL', '1.0'))
+RATE_LIMIT_MAX_BURST = int(os.environ.get('RATE_LIMIT_MAX_BURST', '3'))
+UPDATE_STAGGER_DELAY = float(os.environ.get('UPDATE_STAGGER_DELAY', '0.5'))
 
 from typing import Optional
 from table_generator import generate_table_image
@@ -20,6 +22,52 @@ from utils.interval_parser import parse_intervals, format_interval
 from sessions.session_manager import detect_session
 
 logger = logging.getLogger(__name__)
+
+class RateLimiter:
+    """Global rate limiter for Discord message edits to prevent rate limiting"""
+    
+    def __init__(self):
+        self.last_edit_times = {}  # message_id -> last_edit_timestamp
+        self.edit_queue = asyncio.Queue()
+        self.processing = False
+        self.min_interval = RATE_LIMIT_MIN_INTERVAL  # Minimum seconds between edits globally
+        self.max_burst = RATE_LIMIT_MAX_BURST  # Maximum edits per 5 seconds
+        
+    async def acquire(self, message_id: int) -> None:
+        """Acquire permission to edit a message, waiting if necessary"""
+        current_time = time.time()
+        
+        # Check if we need to wait based on global rate limits
+        recent_edits = [t for t in self.last_edit_times.values() if current_time - t < 5.0]
+        
+        if len(recent_edits) >= self.max_burst:
+            # Too many recent edits, wait until oldest one expires
+            oldest_edit = min(recent_edits)
+            wait_time = 5.0 - (current_time - oldest_edit)
+            if wait_time > 0:
+                logger.debug(f"⏰ Rate limiter: waiting {wait_time:.1f}s for burst limit ({len(recent_edits)} recent edits)")
+                await asyncio.sleep(wait_time)
+                current_time = time.time()
+        
+        # Check minimum interval for this specific message
+        if message_id in self.last_edit_times:
+            time_since_last = current_time - self.last_edit_times[message_id]
+            if time_since_last < self.min_interval:
+                wait_time = self.min_interval - time_since_last
+                logger.debug(f"⏰ Rate limiter: waiting {wait_time:.1f}s for message {message_id} min interval")
+                await asyncio.sleep(wait_time)
+        
+        # Update last edit time
+        self.last_edit_times[message_id] = time.time()
+        
+        # Clean up old entries (keep only last 10 minutes)
+        cutoff = time.time() - 600
+        self.last_edit_times = {mid: t for mid, t in self.last_edit_times.items() if t > cutoff}
+        
+        logger.debug(f"✅ Rate limiter: edit permitted for message {message_id} (active messages: {len(self.last_edit_times)})")
+
+# Global rate limiter instance
+rate_limiter = RateLimiter()
 
 def get_session_flag(session_name: str) -> str:
     """Get flag emoji for trading session"""
@@ -468,6 +516,10 @@ class VWAPBot(commands.Bot):
                         embed.set_footer(text=EMBED_FOOTER_TEXT)
 
                     message = self.channel_states[channel_id][interval]['message']
+                    
+                    # Apply rate limiting before editing message
+                    await rate_limiter.acquire(message.id)
+                    
                     await message.edit(embed=embed, attachments=[file])
                     logger.info(f"✅ Table image updated in channel {channel_id} interval {interval}s")
                     consecutive_failures = 0  # Reset failure counter on success
@@ -490,10 +542,12 @@ class VWAPBot(commands.Bot):
                 
                 if error_code == 429:  # Rate limit
                     retry_after = getattr(e, 'retry_after', 60)
-                    logger.warning(f"⏰ Rate limited, waiting {retry_after}s before retry")
-                    await asyncio.sleep(min(retry_after, 300))  # Cap at 5 minutes
+                    # Be more conservative - add extra buffer time
+                    conservative_wait = min(retry_after * 1.5, 300)  # Cap at 5 minutes, add 50% buffer
+                    logger.warning(f"⏰ Rate limited (429), waiting {conservative_wait:.1f}s before retry (original: {retry_after}s)")
+                    await asyncio.sleep(conservative_wait)
                 elif error_code in [500, 502, 503, 504]:  # Server errors
-                    logger.warning(f"🌐 Discord server error, retrying in 30s")
+                    logger.warning(f"🌐 Discord server error ({error_code}), retrying in 30s")
                     await asyncio.sleep(30)
                 elif consecutive_failures >= max_consecutive_failures:
                     logger.error(f"❌ Too many consecutive failures ({consecutive_failures}), stopping interval {interval}s")
@@ -586,24 +640,35 @@ class VWAPBot(commands.Bot):
                 await asyncio.sleep(60)  # Continue monitoring even if error
     
     async def trigger_all_updates(self):
-        """Trigger immediate update for all active channels/intervals"""
+        """Trigger immediate update for all active channels/intervals with staggering"""
         if not self.channel_states:
             logger.info("ℹ️ No active channels to update")
             return
         
         logger.info(f"🚀 Triggering updates for {sum(len(intervals) for intervals in self.channel_states.values())} active scanner(s)")
         
-        # Collect all update tasks
-        update_tasks = []
+        # Collect all channel/interval pairs to update
+        updates_to_trigger = []
         for channel_id, intervals in self.channel_states.items():
             for interval in intervals:
                 if self.channel_states[channel_id][interval]['running']:
-                    # Signal timer reset for this channel/interval
-                    reset_event = self.channel_states[channel_id][interval]['reset_timer_event']
-                    reset_event.set()
-                    logger.debug(f"🔄 Timer reset signal sent for channel {channel_id} interval {interval}s")
+                    updates_to_trigger.append((channel_id, interval))
         
-        logger.info(f"✅ Timer reset signals sent to all active scanners")
+        # Sort by interval (shorter intervals first) to prioritize faster updates
+        updates_to_trigger.sort(key=lambda x: x[1])
+        
+        # Trigger updates with staggering to avoid rate limits
+        stagger_delay = UPDATE_STAGGER_DELAY  # Configurable delay between each update trigger
+        for i, (channel_id, interval) in enumerate(updates_to_trigger):
+            if i > 0:  # Don't delay the first update
+                await asyncio.sleep(stagger_delay)
+            
+            # Signal timer reset for this channel/interval
+            reset_event = self.channel_states[channel_id][interval]['reset_timer_event']
+            reset_event.set()
+            logger.debug(f"🔄 Timer reset signal sent for channel {channel_id} interval {interval}s (staggered #{i+1})")
+        
+        logger.info(f"✅ Timer reset signals sent to all {len(updates_to_trigger)} active scanners (staggered)")
 
     def set_update_callback(self, callback):
         """Set the callback function to get updated data"""
