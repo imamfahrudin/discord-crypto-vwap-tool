@@ -30,6 +30,10 @@ MAX_SYMBOLS = int(os.environ.get('MAX_SYMBOLS', 120))
 REFRESH_INTERVAL = os.environ.get('REFRESH_INTERVAL', '300,900,1800,3600')
 MIN_VOLUME_M = float(os.environ.get('MIN_VOLUME_M', 0.3))
 CANDLE_FETCH_CONCURRENCY = int(os.environ.get('CANDLE_FETCH_CONCURRENCY', 20))
+# Off by default: the high-frequency tickers stream keeps a thread busy parsing
+# near-continuous messages just to shave a few minutes off a price the scanner
+# already gets from the latest candle close every refresh cycle
+ENABLE_WEBSOCKET_PRICES = os.environ.get('ENABLE_WEBSOCKET_PRICES', 'false').lower() == 'true'
 
 from utils.interval_parser import parse_intervals
 
@@ -248,11 +252,13 @@ async def main():
     # Wait a moment for bot to connect
     await asyncio.sleep(2)
 
-    # THEN initialize websocket connection
-    symbols = (await get_futures_symbols())[:MAX_SYMBOLS]
-    start_ws(symbols)
-
-    logger.info("✅ WebSocket connection started")
+    # THEN initialize websocket connection (opt-in, see ENABLE_WEBSOCKET_PRICES)
+    if ENABLE_WEBSOCKET_PRICES:
+        symbols = (await get_futures_symbols())[:MAX_SYMBOLS]
+        start_ws(symbols)
+        logger.info("✅ WebSocket connection started")
+    else:
+        logger.info("ℹ️ WebSocket price stream disabled (ENABLE_WEBSOCKET_PRICES=false), using candle close prices")
 
     # Wait for bot task (this will run forever)
     await bot_task

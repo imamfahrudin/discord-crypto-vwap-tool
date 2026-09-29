@@ -1,21 +1,29 @@
 import websocket,json,threading,time,logging
 prices={}
 last_update = 0
+last_log = 0
+# Bybit's tickers feed pushes on nearly every trade; skip re-processing a
+# symbol faster than this to cut CPU spent on a value only read every few minutes
+MIN_UPDATE_INTERVAL = 1.0
+_last_symbol_update = {}
 
 logger = logging.getLogger(__name__)
 
 def on_message(ws,msg):
-    global last_update
+    global last_update, last_log
     try:
         data=json.loads(msg)
         if isinstance(data, dict) and "data" in data:
+            now = time.time()
             for d in data["data"]:
-                if "symbol" in d and "lastPrice" in d:
-                    prices[d["symbol"]]=float(d["lastPrice"])
-            last_update = time.time()
-            # Log every 60 seconds
-            if time.time() - last_update > 60:
+                symbol = d.get("symbol")
+                if symbol and "lastPrice" in d and now - _last_symbol_update.get(symbol, 0) >= MIN_UPDATE_INTERVAL:
+                    prices[symbol]=float(d["lastPrice"])
+                    _last_symbol_update[symbol] = now
+            last_update = now
+            if now - last_log > 60:
                 logger.info(f"📡 WebSocket updated {len(prices)} prices")
+                last_log = now
     except Exception as e:
         logger.error(f"Error processing WebSocket message: {e}")
 
