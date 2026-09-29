@@ -82,4 +82,7 @@ python -u main.py' > /app/start.sh && chmod +x /app/start.sh
 RUN mkdir -p /app/data
 
 ENV PYTHONUNBUFFERED=1
+# Cap glibc malloc arenas so the multi-threaded bot (websocket + discord gateway)
+# doesn't balloon RSS well past its actual heap usage on 256MB hosts
+ENV MALLOC_ARENA_MAX=2
 CMD ["/app/start.sh"]

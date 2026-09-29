@@ -29,6 +29,7 @@ from notifier.discord_bot import bot, send_table, start_bot
 MAX_SYMBOLS = int(os.environ.get('MAX_SYMBOLS', 120))
 REFRESH_INTERVAL = os.environ.get('REFRESH_INTERVAL', '300,900,1800,3600')
 MIN_VOLUME_M = float(os.environ.get('MIN_VOLUME_M', 0.3))
+CANDLE_FETCH_CONCURRENCY = int(os.environ.get('CANDLE_FETCH_CONCURRENCY', 20))
 
 from utils.interval_parser import parse_intervals
 
@@ -106,7 +107,9 @@ async def get_scanner_data_raw():
         logger.info(f"📊 Session: {session_name}, Weight: {weight}, Using current session data (hours elapsed: {hours_elapsed:.1f})")
 
     # Create a new session for this request
-    async with aiohttp.ClientSession() as session:
+    # Bound concurrent connections/buffers so a 120-symbol scan doesn't spike RSS on 256MB hosts
+    connector = aiohttp.TCPConnector(limit=CANDLE_FETCH_CONCURRENCY)
+    async with aiohttp.ClientSession(connector=connector) as session:
         tasks = [
             get_session_candles(session, s, "5", start_ts)
             for s in symbols

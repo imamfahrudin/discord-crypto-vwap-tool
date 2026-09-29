@@ -1,7 +1,6 @@
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from matplotlib.table import Table
-import pandas as pd
 from io import BytesIO
 from datetime import datetime
 import warnings
@@ -9,8 +8,16 @@ import re
 import json
 import os
 import logging
+import ctypes
 
 logger = logging.getLogger(__name__)
+
+def _release_memory():
+    """Return freed heap pages to the OS (glibc malloc_trim) after a big matplotlib allocation"""
+    try:
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except Exception:
+        pass
 
 # Import database functions
 try:
@@ -307,6 +314,7 @@ def generate_table_image(table_data: str, session_name: str = "UNKNOWN", weight:
 
     # Close figure to free memory
     plt.close(fig)
+    _release_memory()
 
     return buf
 
@@ -409,4 +417,5 @@ def generate_error_image(error_message: str) -> BytesIO:
     buf.seek(0)
 
     plt.close(fig)
+    _release_memory()
     return buf
